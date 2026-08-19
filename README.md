@@ -1,2 +1,2 @@
-# controlviajes.index.html
+# index.html
 CONTROL DE VIAJES IGC
