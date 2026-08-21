@@ -144,6 +144,16 @@ footer.site strong{color:#fff;}
 .diag-muted{color:var(--slate);}
 .diag-log{margin:0;padding:11px 12px;background:#0F2430;color:#DDE8ED;max-height:210px;overflow:auto;font-family:'IBM Plex Mono',monospace;font-size:10.5px;line-height:1.55;white-space:pre-wrap;word-break:break-word;}
 @media (max-width:700px){.diag-grid{grid-template-columns:1fr}.diag-label{border-bottom:none;padding-bottom:2px}.diag-value{padding-top:2px}.diag-grid > :nth-last-child(-n+2){border-bottom:1px solid var(--line)}}
+
+.login-overlay{position:fixed;inset:0;background:var(--navy);display:flex;align-items:center;justify-content:center;z-index:1000;padding:20px;}
+.login-overlay.hidden{display:none;}
+.login-box{background:var(--paper);border-radius:14px;padding:28px 26px;max-width:360px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,.35);}
+.login-box h2{margin:0 0 8px;color:var(--navy);font-size:20px;}
+.login-box p{color:var(--slate);font-size:12.5px;margin:0 0 16px;line-height:1.5;}
+body.sesion-activa .login-overlay{display:none;}
+body:not(.sesion-activa) header.site,body:not(.sesion-activa) nav.tabs,body:not(.sesion-activa) main{display:none;}
+.solo-aprobador{display:none;}
+body.rol-aprobador .solo-aprobador{display:inline-block;}
 </style>
 </head>
 <body>
@@ -156,11 +166,28 @@ footer.site strong{color:#fff;}
       <p>Producción diaria → consolidados → liquidación quincenal → aprobación · Válido para 2026 y años siguientes</p>
     </div>
     <div class="user-box">
-      <label for="usuarioActual">Usuario</label>
-      <input type="text" id="usuarioActual" placeholder="Tu nombre">
+      <input type="hidden" id="usuarioActual" value="">
+      <div id="sesionInfo" style="text-align:right;">
+        <div style="font-size:12.5px;font-weight:600;color:#fff;" id="sesionNombre">—</div>
+        <div style="font-size:10.5px;color:#B9CBD3;" id="sesionRol">—</div>
+      </div>
+      <button class="btn sm" id="btnCerrarSesion" onclick="cerrarSesion()" style="border-color:rgba(255,255,255,.3);color:#fff;background:transparent;">Cerrar sesión</button>
     </div>
   </div>
 </header>
+
+<div id="loginOverlay" class="login-overlay">
+  <div class="login-box">
+    <img src="" alt="" style="display:none;">
+    <h2>TRANSPORTE IGC</h2>
+    <p>Sistema de registro y liquidación de conductores — inicia sesión para continuar. La información se consulta siempre desde Google Sheets, la base principal.</p>
+    <div class="field"><label for="loginUsuario">Usuario</label><input type="text" id="loginUsuario" autocomplete="username"></div>
+    <div class="field"><label for="loginPassword">Contraseña</label><input type="password" id="loginPassword" autocomplete="current-password"></div>
+    <div id="loginError"></div>
+    <div class="btn-row"><button class="btn primary" style="width:100%;justify-content:center;" onclick="intentarLogin()">Ingresar</button></div>
+    <p class="hint" style="margin-top:14px;">Antes de iniciar sesión, guarda la URL de Apps Script y la clave de conexión si aún no lo has hecho (quedan guardadas en este navegador).</p>
+  </div>
+</div>
 
 <nav class="tabs">
   <div class="tabs-inner" id="tabsInner">
@@ -364,7 +391,7 @@ footer.site strong{color:#fff;}
     <div class="btn-row">
       <button class="btn" onclick="guardarLiquidacion('Borrador')">Guardar borrador</button>
       <button class="btn" onclick="guardarLiquidacion('En revisión')">Enviar a revisión</button>
-      <button class="btn gold" onclick="guardarLiquidacion('Aprobada')">Aprobar</button>
+      <button class="btn gold solo-aprobador" onclick="guardarLiquidacion('Aprobada')">Aprobar</button>
       <button class="btn danger" onclick="guardarLiquidacion('Rechazada')">Rechazar</button>
     </div>
   </div>
@@ -673,7 +700,7 @@ footer.site strong{color:#fff;}
 
 </main>
 
-<footer class="site"><strong>Transporte IGC S.A.S.</strong> · Tu carga segura · Herramienta interna de registro y liquidación — Google Sheets es la base principal y localStorage funciona solo como caché local.</footer>
+<footer class="site"><strong>Transporte IGC S.A.S.</strong> · Tu carga segura · Herramienta interna de registro y liquidación — Google Sheets es la única base de datos; localStorage solo guarda la URL/clave de conexión en este navegador.</footer>
 
 <script>
 var MESES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -704,15 +731,74 @@ function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(
 function fmt(n){ n=Math.round(n||0); return "$"+n.toLocaleString("es-CO"); }
 function nowDateStr(){ var d=new Date(); return dstr(d.getFullYear(),d.getMonth()+1,d.getDate()); }
 function nowTimeStr(){ var d=new Date(); return pad2(d.getHours())+":"+pad2(d.getMinutes()); }
-function usuario(){ return document.getElementById("usuarioActual").value.trim() || "Sin identificar"; }
+function usuario(){ return SESION ? SESION.nombre : "Sin identificar"; }
+function usuarioLogin(){ return SESION ? SESION.usuario : ""; }
 
 var DB_KEY = "igc_nomina_db_v1";
 var USER_KEY = "igc_nomina_usuario";
 
+/* ===== Usuarios y sesión =====
+   Solo control de acceso a la interfaz. La autorización real (por ejemplo, quién
+   puede aprobar) siempre se vuelve a validar en Apps Script, nunca solo aquí. */
+var USERS = {
+  "egutierrez": {password:"IGC.2011@T", rol:"APROBADOR", nombre:"Eydis Gutiérrez"},
+  "dbarrios":   {password:"Julian@2012", rol:"ELABORADOR", nombre:"Doris Barrios"}
+};
+var SESSION_KEY = "igc_sesion_v1";
+var SESION = null; /* {usuario, nombre, rol, ingresoFecha, ingresoHora} — solo dura la pestaña actual */
+
+function cargarSesion(){
+  try {
+    var raw = sessionStorage.getItem(SESSION_KEY);
+    SESION = raw ? JSON.parse(raw) : null;
+  } catch(e){ SESION = null; }
+  if(SESION && (!USERS[SESION.usuario] || USERS[SESION.usuario].nombre !== SESION.nombre)) SESION = null;
+  aplicarEstadoSesion();
+  return SESION;
+}
+function aplicarEstadoSesion(){
+  var overlay = document.getElementById("loginOverlay");
+  if(SESION){
+    document.body.classList.add("sesion-activa");
+    document.body.classList.toggle("rol-aprobador", SESION.rol === "APROBADOR");
+    if(overlay) overlay.classList.add("hidden");
+    document.getElementById("usuarioActual").value = SESION.usuario;
+    document.getElementById("sesionNombre").textContent = SESION.nombre;
+    document.getElementById("sesionRol").textContent = SESION.rol === "APROBADOR" ? "Aprobador" : "Elaborador";
+  } else {
+    document.body.classList.remove("sesion-activa");
+    document.body.classList.remove("rol-aprobador");
+    if(overlay) overlay.classList.remove("hidden");
+  }
+}
+function intentarLogin(){
+  var u = (document.getElementById("loginUsuario").value || "").trim();
+  var p = document.getElementById("loginPassword").value || "";
+  var errBox = document.getElementById("loginError");
+  errBox.innerHTML = "";
+  var def = USERS[u];
+  if(!def || def.password !== p){
+    errBox.innerHTML = '<div class="callout danger">Usuario o contraseña incorrectos.</div>';
+    return;
+  }
+  SESION = {usuario:u, nombre:def.nombre, rol:def.rol, ingresoFecha:nowDateStr(), ingresoHora:nowTimeStr()};
+  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(SESION)); } catch(e){}
+  document.getElementById("loginPassword").value = "";
+  aplicarEstadoSesion();
+  arrancarAplicativoTrasLogin();
+}
+function cerrarSesion(){
+  if(!confirm("¿Cerrar sesión?")) return;
+  SESION = null;
+  try { sessionStorage.removeItem(SESSION_KEY); } catch(e){}
+  aplicarEstadoSesion();
+}
+function esAprobador(){ return !!(SESION && SESION.rol === "APROBADOR"); }
+
 /* ===== Guardado automático en Google Sheets vía Google Apps Script ===== */
 /* La URL se puede cambiar desde Configuración sin editar nuevamente este HTML. */
 var APPS_SCRIPT_URL_STORAGE = "igc_apps_script_url_v1";
-var URL_APPS_SCRIPT_DEFAULT = "https://script.google.com/macros/s/AKfycbzW5xaDW1Nz43DHzvNRIwzysmCHB5dfNG3HO0j_qudpBIfx4t_md1fpAk55SVCl15MgdQ/exec";
+var URL_APPS_SCRIPT_DEFAULT = "https://script.google.com/macros/s/AKfycbwgKIAp0TTWxKc1Tss8AbdvI--r9P_Bi_CuaRrgbe_dqaJvv2z_W2_reOiltRM-yYTjXQ/exec";
 var URL_APPS_SCRIPT = (localStorage.getItem(APPS_SCRIPT_URL_STORAGE) || URL_APPS_SCRIPT_DEFAULT).trim();
 
 function seedDB(){
@@ -760,22 +846,17 @@ var REMOTE_BASELINE = null;
 var SYNC_READY = false;
 var LAST_SERVER_VERSION = 0;
 var ACCESS_KEY_STORAGE = "igc_sheets_access_key_v2";
+var ACCESS_KEY_DEFAULT = "IGC-2026-TRANSPORTE-BASE";
 
 function deepClone(obj){ return JSON.parse(JSON.stringify(obj)); }
 
-/* localStorage queda solo como caché de contingencia. */
+/* Google Sheets es la única base de datos. localStorage NO se usa para viajes, conductores,
+   liquidaciones, préstamos, bonificaciones ni historial — solo para la URL/clave de conexión,
+   que no son datos de negocio. DB arranca vacío/estructural mientras se descarga lo real. */
 function loadDB(){
-  var raw = localStorage.getItem(DB_KEY);
-  if(!raw){
-    DB = seedDB();
-    localStorage.setItem(DB_KEY, JSON.stringify(DB));
-  } else {
-    try { DB = JSON.parse(raw); }
-    catch(e){ DB = seedDB(); localStorage.setItem(DB_KEY, JSON.stringify(DB)); }
-  }
+  DB = seedDB();
 }
 function saveDB(){
-  localStorage.setItem(DB_KEY, JSON.stringify(DB));
   if(SYNC_READY) programarSincronizacionAppsScript();
 }
 
@@ -1145,11 +1226,7 @@ function recalcLiquidacion(){
   document.getElementById("liqNeto").textContent = fmt(neto);
 }
 
-var APROBADOR_AUTORIZADO = "Eydis Gutiérrez";
-var CORREO_APROBADOR = "eydisg.transporteigc@gmail.com";
-function normalizarNombre(s){
-  return (s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").trim().toLowerCase();
-}
+var CORREO_NOTIFICACION_APROBACION = "dorisbarrios.transporteigc@gmail.com";
 function abrirGmailCompose(destinatario, asunto, cuerpo){
   var url = "https://mail.google.com/mail/?view=cm&fs=1&to="+encodeURIComponent(destinatario)+"&su="+encodeURIComponent(asunto)+"&body="+encodeURIComponent(cuerpo);
   window.open(url, "_blank");
@@ -1162,17 +1239,15 @@ function guardarLiquidacion(estado){
   var existente = liquidacionExistente(conductorId, quincenaKey);
   var alertZone = document.getElementById("liqAlertZone");
 
+  if(!SESION){ alert("Tu sesión expiró. Vuelve a iniciar sesión."); return; }
   if(existente && (existente.estado==="Aprobada" || existente.estado==="Pagada") && estado!=="Aprobada"){
     var comentario0 = document.getElementById("liqComentario").value.trim();
     if(!comentario0){ alert("Esta liquidación ya fue aprobada. Escribe un motivo en el comentario para poder modificarla."); return; }
   }
-  if(estado==="Aprobada"){
-    var aprobador = usuario();
-    if(aprobador==="Sin identificar" || !aprobador.trim()){ alert("Escribe tu nombre en el campo Usuario (arriba a la derecha) antes de aprobar."); return; }
-    if(normalizarNombre(aprobador) !== normalizarNombre(APROBADOR_AUTORIZADO)){
-      alertZone.innerHTML = '<div class="callout danger">No estás autorizado para generar aprobaciones. Esta acción solo puede realizarla '+APROBADOR_AUTORIZADO+'.</div>';
-      return;
-    }
+  if(estado==="Aprobada" && !esAprobador()){
+    /* Chequeo local solo para experiencia de usuario — Apps Script vuelve a validarlo siempre. */
+    alertZone.innerHTML = '<div class="callout danger">No estás autorizado para aprobar liquidaciones. Solo el usuario aprobador puede hacerlo.</div>';
+    return;
   }
 
   var producido = window.currentLiq.totalProducido;
@@ -1195,28 +1270,39 @@ function guardarLiquidacion(estado){
   registro.subtotal = subtotal; registro.bonificacion = bonificacion; registro.basico = basico; registro.adicional = adicional;
   registro.alimentacionDias = diasAlim; registro.alimentacionValorDia = valorDiaAlim; registro.alimentacionTotal = alimTotal;
   registro.neto = neto; registro.comentario = comentario; registro.updatedAt = nowDateStr()+" "+nowTimeStr();
-
-  if(estado==="Aprobada" && estadoAnterior!=="Aprobada"){
-    registro.aprobadoPor = usuario(); registro.fechaAprobacion = nowDateStr(); registro.horaAprobacion = nowTimeStr();
-    if(window.currentLiq.prestamoRef && prestamoVal>0){
-      var pr = DB.prestamos.filter(function(p){ return p.id===window.currentLiq.prestamoRef; })[0];
-      if(pr){
-        pr.saldo = Math.max(0, pr.saldo - prestamoVal);
-        pr.cuotasPagadas = pr.cuotasPagadas + 1;
-        logHistorial("prestamo", pr.id, "cuota descontada", "", fmt(prestamoVal)+" — saldo restante "+fmt(pr.saldo), "", quincenaKey, conductorId);
-      }
-    }
-  }
-  registro.estado = estado;
-
-  if(!existente){ DB.liquidaciones.push(registro); }
-  logHistorial("liquidacion", registro.id, "estado", estadoAnterior||"(nueva)", estado, comentario, quincenaKey, conductorId);
-  saveDB();
+  registro.elaboradoPor = registro.elaboradoPor || usuario();
+  registro.prestamoRef = window.currentLiq.prestamoRef || registro.prestamoRef || "";
 
   var cInfo = conductorById(conductorId);
   var qInfo = getQuincena(quincenaKey);
   var nombreC = cInfo ? cInfo.nombre : conductorId;
   var labelQ = qInfo ? qInfo.label : quincenaKey;
+
+  if(estado==="Aprobada"){
+    alertZone.innerHTML = '<div class="callout info">Enviando aprobación a Google Sheets…</div>';
+    registro.estado = "Aprobada";
+    enviarPostAppsScriptConRespuesta({
+      tipo: "aprobar_liquidacion",
+      usuario: usuarioLogin(),
+      fechaEnvio: nowDateStr()+" "+nowTimeStr(),
+      registro: registro,
+      prestamoDescuento: (window.currentLiq.prestamoRef && prestamoVal>0) ? {id:window.currentLiq.prestamoRef, valor:prestamoVal} : null
+    }).then(function(resp){
+      if(!resp || !resp.ok) throw new Error((resp && resp.error) || "Apps Script rechazó la aprobación.");
+      alertZone.innerHTML = '<div class="callout ok">La liquidación de <b>'+labelQ+'</b> para <b>'+nombreC+'</b> quedó aprobada en Google Sheets. Se envió el correo de notificación.</div>';
+      return recargarDesdeGoogleSheets(false);
+    }).then(function(){
+      cargarLiquidacion(); renderAprobaciones(); renderAnualDashboard();
+    }).catch(function(err){
+      alertZone.innerHTML = '<div class="callout danger">No se pudo aprobar: '+err.message+'</div>';
+    });
+    return;
+  }
+
+  if(!existente){ DB.liquidaciones.push(registro); }
+  logHistorial("liquidacion", registro.id, "estado", estadoAnterior||"(nueva)", estado, comentario, quincenaKey, conductorId);
+  registro.estado = estado;
+  saveDB();
 
   cargarLiquidacion();
   renderAprobaciones();
@@ -1224,7 +1310,7 @@ function guardarLiquidacion(estado){
 
   var mensajeFinal = "";
   if(estado==="Borrador"){
-    mensajeFinal = '<div class="callout ok">Esta liquidación quincenal se ha guardado exitosamente.</div>';
+    mensajeFinal = '<div class="callout ok">Esta liquidación quincenal se ha guardado exitosamente. El cambio se está enviando a Google Sheets.</div>';
   } else if(estado==="En revisión"){
     var asunto = "Solicitud de aprobación — liquidación quincenal";
     var cuerpo = "Se solicita tu aprobación para la siguiente liquidación quincenal:\n\n" +
@@ -1234,11 +1320,8 @@ function guardarLiquidacion(estado){
       "Total neto a pagar: "+fmt(neto)+"\n\n"+
       "Ingresa al sistema de registro y liquidación de Transporte IGC para revisarla y aprobarla.\n\n"+
       "Enviado por: "+usuario();
-    abrirGmailCompose(CORREO_APROBADOR, asunto, cuerpo);
-    mensajeFinal = '<div class="callout ok">Liquidación enviada a revisión. Se abrió una ventana de Gmail dirigida a <b>'+CORREO_APROBADOR+'</b> con la notificación lista — solo falta que la envíes desde tu correo.</div>' +
-      '<div class="callout info">Una página web sin servidor no puede enviar correos por sí sola de forma silenciosa; por eso se abre el borrador ya redactado en Gmail en vez de enviarse automáticamente.</div>';
-  } else if(estado==="Aprobada"){
-    mensajeFinal = '<div class="callout ok">La liquidación de <b>'+labelQ+'</b> para <b>'+nombreC+'</b> ha sido aprobada exitosamente por '+APROBADOR_AUTORIZADO+'.</div>';
+    abrirGmailCompose(CORREO_NOTIFICACION_APROBACION, asunto, cuerpo);
+    mensajeFinal = '<div class="callout ok">Liquidación enviada a revisión y guardada en Google Sheets. Se abrió una ventana de Gmail con un aviso opcional — puedes cerrarla si el aprobador ya revisa el sistema directamente.</div>';
   } else if(estado==="Rechazada"){
     mensajeFinal = '<div class="callout warn">La liquidación fue marcada como rechazada.</div>';
   }
@@ -1604,7 +1687,7 @@ var COLLECTION_KEYS = {
   prestamos:"id", bonificaciones:"id", liquidaciones:"id", historial:"id"
 };
 
-function getAccessKey(){ return (localStorage.getItem(ACCESS_KEY_STORAGE) || "").trim(); }
+function getAccessKey(){ return (localStorage.getItem(ACCESS_KEY_STORAGE) || ACCESS_KEY_DEFAULT || "").trim(); }
 function getAppsScriptUrl(){ return (URL_APPS_SCRIPT || "").trim(); }
 
 function normalizarUrlAppsScript(raw){
@@ -1876,6 +1959,21 @@ function enviarPostAppsScript(payload){
   });
 }
 
+/* Para operaciones que necesitan confirmación real del servidor (por ejemplo aprobar_liquidacion),
+   a diferencia de enviarPostAppsScript esta SÍ lee la respuesta JSON de Apps Script. */
+function enviarPostAppsScriptConRespuesta(payload){
+  var key = getAccessKey();
+  if(!key) return Promise.reject(new Error("Falta la clave de conexión"));
+  payload.key = key;
+  var activeUrl = getAppsScriptUrl();
+  if(!urlAppsScriptValida(activeUrl)) return Promise.reject(new Error("URL de Apps Script no válida o no termina en /exec"));
+  return fetch(activeUrl, {
+    method:"POST",
+    headers:{"Content-Type":"text/plain;charset=utf-8"},
+    body:JSON.stringify(payload)
+  }).then(function(r){ return r.json(); });
+}
+
 function programarSincronizacionAppsScript(){
   if(!SYNC_READY || !REMOTE_BASELINE) return;
   clearTimeout(asTimer);
@@ -1949,7 +2047,6 @@ function cargarDBRemota(){
     REMOTE_BASELINE = deepClone(DB);
     LAST_SERVER_VERSION = Number(resp.version || 0);
     SYNC_READY = true;
-    localStorage.setItem(DB_KEY, JSON.stringify(DB));
     renderTodo();
     actualizarEstadoAppsScript("conectado. Google Sheets es la base principal. Versión "+LAST_SERVER_VERSION+".", "ok");
     return resp;
@@ -1966,7 +2063,7 @@ function recargarDesdeGoogleSheets(forzarMensaje){
   if(forzarMensaje) actualizarEstadoAppsScript("cargando la base desde Google Sheets…");
   return cargarDBRemota().catch(function(err){
     SYNC_READY = false;
-    actualizarEstadoAppsScript("no fue posible cargar Google Sheets: "+err.message+". Se muestra la última caché local disponible.", "warn");
+    actualizarEstadoAppsScript("no fue posible cargar Google Sheets: "+err.message+". No se muestran datos porque este sistema no usa copias locales — corrige la conexión e inténtalo de nuevo.", "warn");
     DIAG_LAST.error = err.message || String(err);
     actualizarDiagnosticoBasico();
     diagSet("diagError", DIAG_LAST.error, "diag-error");
@@ -2038,14 +2135,23 @@ document.querySelectorAll(".tab-btn").forEach(function(btn){
   });
 });
 
-document.getElementById("usuarioActual").addEventListener("input", function(){
-  localStorage.setItem(USER_KEY, this.value);
-});
+var APLICATIVO_INICIADO = false;
+function arrancarAplicativoTrasLogin(){
+  if(APLICATIVO_INICIADO) return;
+  APLICATIVO_INICIADO = true;
+  renderTodo();
+  iniciarPollingRemoto();
+  if(getAccessKey()){
+    actualizarEstadoAppsScript("usuario validado. Consultando Google Sheets…");
+    recargarDesdeGoogleSheets(false);
+  } else {
+    actualizarEstadoAppsScript("falta la clave de conexión. Ve a Configuración → Google Sheets.", "warn");
+  }
+}
 
 function init(){
+  cargarSesion();
   loadDB();
-  var savedUser = localStorage.getItem(USER_KEY);
-  if(savedUser) document.getElementById("usuarioActual").value = savedUser;
   var keyInput = document.getElementById("sheetsAccessKey");
   if(keyInput) keyInput.value = getAccessKey();
   var urlInput = document.getElementById("appsScriptUrlInput");
@@ -2056,16 +2162,8 @@ function init(){
   document.getElementById("pFecha").value = nowDateStr();
   document.getElementById("bFecha").value = nowDateStr();
 
-  /* Primero muestra la caché local y enseguida sustituye por la base remota. */
-  renderTodo();
-  iniciarPollingRemoto();
-
-  if(getAccessKey()){
-    actualizarEstadoAppsScript("conectando con Google Sheets…");
-    recargarDesdeGoogleSheets(false);
-  } else {
-    actualizarEstadoAppsScript("falta la clave de conexión. Ve a Configuración → Google Sheets.", "warn");
-  }
+  /* Sin sesión no se toca Google Sheets todavía: se espera a que el usuario inicie sesión. */
+  if(SESION) arrancarAplicativoTrasLogin();
 }
 init();
 </script>
