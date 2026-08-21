@@ -377,7 +377,7 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
     <div class="liq-line total" style="border-top:1px dashed var(--line);font-size:13.5px;font-weight:600;color:var(--ink);"><span>Subtotal</span><span class="ll-val" id="liqSubtotal">$0</span></div>
     <div class="liq-line"><span>Bonificación</span><input type="number" id="liqBonificacion"></div>
     <div class="liq-line"><span>Básico</span><input type="number" id="liqBasico"></div>
-    <div class="liq-line total" style="border-top:1px dashed var(--line);font-size:13.5px;font-weight:600;color:var(--ink);"><span>Adicional (subtotal − básico)</span><span class="ll-val" id="liqAdicional">$0</span></div>
+    <div class="liq-line total" style="border-top:1px dashed var(--line);font-size:13.5px;font-weight:600;color:var(--ink);"><span>Adicional (subtotal − básico + bonificación)</span><span class="ll-val" id="liqAdicional">$0</span></div>
     <div class="liq-line">
       <span>Beneficio de alimentación — días reconocidos <input type="number" id="liqDiasAlim" style="width:60px;display:inline-block;margin-left:6px;"> × valor/día <input type="number" id="liqValorDiaAlim" style="width:90px;display:inline-block;"></span>
       <span class="ll-val" id="liqAlimTotal">$0</span>
@@ -1216,9 +1216,9 @@ function recalcLiquidacion(){
   var valorDiaAlim = parseFloat(document.getElementById("liqValorDiaAlim").value)||0;
 
   var subtotal = producido - segSocial - prestamo;
-  var adicional = subtotal - basico;
+  var adicional = subtotal - basico + bonificacion;
   var alimTotal = diasAlim*valorDiaAlim;
-  var neto = adicional + basico + bonificacion + alimTotal;
+  var neto = adicional + basico + alimTotal;
 
   document.getElementById("liqSubtotal").textContent = fmt(subtotal);
   document.getElementById("liqAdicional").textContent = fmt(adicional);
@@ -1258,9 +1258,9 @@ function guardarLiquidacion(estado){
   var diasAlim = parseFloat(document.getElementById("liqDiasAlim").value)||0;
   var valorDiaAlim = parseFloat(document.getElementById("liqValorDiaAlim").value)||0;
   var subtotal = producido - segSocial - prestamoVal;
-  var adicional = subtotal - basico;
+  var adicional = subtotal - basico + bonificacion;
   var alimTotal = diasAlim*valorDiaAlim;
-  var neto = adicional + basico + bonificacion + alimTotal;
+  var neto = adicional + basico + alimTotal;
   var comentario = document.getElementById("liqComentario").value;
 
   var estadoAnterior = existente ? existente.estado : null;
