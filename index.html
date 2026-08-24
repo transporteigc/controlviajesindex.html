@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js"></script>
 <style>
 :root{
   --navy:#002E42; --navy-2:#0B4258; --navy-3:#123A4D;
@@ -317,7 +318,7 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
   <div class="card">
     <h3>Préstamos</h3>
     <div class="table-wrap"><table class="data" id="tablaPrestamos">
-      <thead><tr><th>Conductor</th><th>Fecha</th><th>Concepto</th><th>Valor inicial</th><th>Cuotas</th><th>Valor cuota</th><th>Cuotas pagadas</th><th>Saldo</th></tr></thead>
+      <thead><tr><th>Conductor</th><th>Fecha</th><th>Concepto</th><th>Valor inicial</th><th>Cuotas</th><th>Valor cuota</th><th>Cuotas pagadas</th><th>Saldo</th><th>Acciones</th></tr></thead>
       <tbody></tbody>
     </table></div>
   </div>
@@ -339,10 +340,33 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
   <div class="card">
     <h3>Bonificaciones</h3>
     <div class="table-wrap"><table class="data" id="tablaBonificaciones">
-      <thead><tr><th>Conductor</th><th>Quincena</th><th>Fecha</th><th>Concepto</th><th>Valor</th><th>Autorizado por</th></tr></thead>
+      <thead><tr><th>Conductor</th><th>Quincena</th><th>Fecha</th><th>Concepto</th><th>Valor</th><th>Autorizado por</th><th>Acciones</th></tr></thead>
       <tbody></tbody>
     </table></div>
     <div class="btn-row"><button class="btn gold" onclick="exportarPrestamos()">Exportar préstamos y bonificaciones a Excel</button></div>
+  </div>
+
+  <div class="card">
+    <h3>Beneficio de alimentación — viajes eventuales / duales (ya entregado)</h3>
+    <p class="hint">Para viajes eventuales (carbón, maíz, y otros duales) donde se entrega hidratación, almuerzo o cena de forma anticipada. Este valor NO se suma al neto a desembolsar — la liquidación lo muestra en el total de la quincena y luego lo resta, porque el conductor ya lo recibió.</p>
+    <div class="grid4">
+      <div class="field"><label for="eConductor">Conductor</label><select id="eConductor"></select></div>
+      <div class="field"><label for="eFecha">Fecha</label><input type="date" id="eFecha"></div>
+      <div class="field"><label for="eQuincena">Quincena</label><select id="eQuincena"></select></div>
+      <div class="field"><label for="eViaje">Viaje relacionado</label><input type="text" id="eViaje" placeholder="Ej: Carbón, Maíz"></div>
+    </div>
+    <div class="grid3">
+      <div class="field"><label for="eItem">Ítem entregado</label><select id="eItem">
+        <option>Hidratación</option><option>Desayuno</option><option>Almuerzo</option><option>Cena</option><option>Otro</option>
+      </select></div>
+      <div class="field"><label for="eValor">Valor</label><input type="number" id="eValor" step="1000"></div>
+      <div class="field"><label for="eObs">Observación</label><input type="text" id="eObs"></div>
+    </div>
+    <div class="btn-row"><button class="btn primary" onclick="guardarBeneficioEventual()">Registrar beneficio entregado</button></div>
+    <div class="table-wrap" style="margin-top:12px;"><table class="data" id="tablaBeneficiosEventuales">
+      <thead><tr><th>Conductor</th><th>Quincena</th><th>Fecha</th><th>Viaje</th><th>Ítem</th><th>Valor</th><th>Observación</th><th>Acciones</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
   </div>
 </section>
 
@@ -379,10 +403,27 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
     <div class="liq-line"><span>Básico</span><input type="number" id="liqBasico"></div>
     <div class="liq-line total" style="border-top:1px dashed var(--line);font-size:13.5px;font-weight:600;color:var(--ink);"><span>Adicional (subtotal − básico + bonificación)</span><span class="ll-val" id="liqAdicional">$0</span></div>
     <div class="liq-line">
-      <span>Beneficio de alimentación — días reconocidos <input type="number" id="liqDiasAlim" style="width:60px;display:inline-block;margin-left:6px;"> × valor/día <input type="number" id="liqValorDiaAlim" style="width:90px;display:inline-block;"></span>
+      <span>Beneficio de alimentación Argos — días calificados <span class="hint" style="display:inline;">(automático: se activa solo cuando el conductor hizo 3 o más viajes en rutas Argos el mismo día)</span> <input type="number" id="liqDiasAlim" style="width:60px;display:inline-block;margin-left:6px;" readonly> × valor/día <input type="number" id="liqValorDiaAlim" style="width:90px;display:inline-block;"></span>
       <span class="ll-val" id="liqAlimTotal">$0</span>
     </div>
-    <div class="liq-line total"><span>Total neto a pagar</span><span class="ll-val" id="liqNeto">$0</span></div>
+    <p class="hint" id="liqArgosDetalle" style="margin:-4px 0 4px;"></p>
+
+    <h4>Beneficio de alimentación anticipada — rutas distintas de Argos</h4>
+    <p class="hint">Marca, por cada ruta distinta de Argos que el conductor manejó en esta quincena, qué beneficios de alimentación se le entregaron de forma anticipada. El valor se calcula como (valor del ítem) × (viajes de esa ruta en la quincena). Este beneficio ya fue entregado al conductor: se refleja en el total de la quincena para ver el ingreso real, pero se descuenta del neto a desembolsar.</p>
+    <div class="grid3">
+      <div class="field"><label for="liqValorDesayuno">Valor desayuno (por viaje)</label><input type="number" id="liqValorDesayuno" step="500" value="6000"></div>
+      <div class="field"><label for="liqValorAlmuerzo">Valor almuerzo (por viaje)</label><input type="number" id="liqValorAlmuerzo" step="500" value="9000"></div>
+      <div class="field"><label for="liqValorCena">Valor cena (por viaje)</label><input type="number" id="liqValorCena" step="500" value="9000"></div>
+    </div>
+    <div class="table-wrap"><table class="data" id="tablaLiqAlimNoArgos">
+      <thead><tr><th>Ruta</th><th>Viajes</th><th>Desayuno</th><th>Almuerzo</th><th>Cena</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <div class="liq-line"><span>Total beneficio anticipado (rutas no-Argos)</span><span class="ll-val" id="liqAlimNoArgosTotal">$0</span></div>
+
+    <div class="liq-line total" style="border-top:1px dashed var(--line);font-size:13.5px;font-weight:600;color:var(--ink);"><span>Total quincena (incluye beneficios de alimentación ya entregados)</span><span class="ll-val" id="liqTotalQuincena">$0</span></div>
+    <div class="liq-line"><span>(−) Beneficio de alimentación anticipada (rutas no-Argos) <span class="hint" style="display:inline;">(ya recibido por el conductor)</span></span><span class="ll-val" id="liqBenefNoArgosLinea">$0</span></div>
+    <div class="liq-line total"><span>Total neto a desembolsar</span><span class="ll-val" id="liqNeto">$0</span></div>
 
     <div class="field" style="margin-top:14px;"><label for="liqComentario">Comentario / motivo (si estás modificando una liquidación aprobada)</label><textarea id="liqComentario"></textarea></div>
 
@@ -414,7 +455,7 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
     </div>
   </div>
   <div class="table-wrap"><table class="data" id="tablaAprobaciones">
-    <thead><tr><th>Quincena</th><th>Conductor</th><th>Total producido</th><th>Neto a pagar</th><th>Estado</th><th>Aprobado por</th><th>Fecha</th><th>Hora</th></tr></thead>
+    <thead><tr><th>Quincena</th><th>Conductor</th><th>Total producido</th><th>Neto a pagar</th><th>Estado</th><th>Elaborado por</th><th>Aprobado por</th><th>Fecha aprobación</th><th>Hora aprobación</th></tr></thead>
     <tbody></tbody>
   </table></div>
 </section>
@@ -463,20 +504,31 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
   </div>
 
   <div class="card">
-    <h3>Producción por conductor</h3>
-    <div id="barConductor"></div>
+    <h3>Evolución mensual de producción</h3>
+    <p class="hint">Línea de tiempo del total producido mes a mes. Sirve para ver picos y caídas de un vistazo.</p>
+    <div style="position:relative;height:280px;"><canvas id="chartMes"></canvas></div>
   </div>
-  <div class="card">
-    <h3>Producción por ruta</h3>
-    <div id="barRuta"></div>
+
+  <div class="grid2">
+    <div class="card">
+      <h3>Producción por conductor</h3>
+      <div style="position:relative;height:280px;"><canvas id="chartConductor"></canvas></div>
+    </div>
+    <div class="card">
+      <h3>Producción por ruta</h3>
+      <div style="position:relative;height:280px;"><canvas id="chartRuta"></canvas></div>
+    </div>
   </div>
+
   <div class="card">
     <h3>Viajes por vehículo</h3>
-    <div id="barVehiculo"></div>
+    <div style="position:relative;height:260px;"><canvas id="chartVehiculo"></canvas></div>
   </div>
+
   <div class="card">
-    <h3>Evolución mensual (total producido)</h3>
-    <div id="barMes"></div>
+    <h3>Diagnóstico gerencial y alertas de producción</h3>
+    <p class="hint">Generado automáticamente a partir de los viajes y liquidaciones del año seleccionado: picos, caídas y conductores con baja producción para tomar correctivos.</p>
+    <div id="diagnosticoAnual"></div>
   </div>
 </section>
 
@@ -871,6 +923,13 @@ function logHistorial(entidad, registroId, campo, anterior, nuevo, motivo, quinc
 
 function conductorById(id){ for(var i=0;i<DB.conductores.length;i++){ if(DB.conductores[i].id===id) return DB.conductores[i]; } return null; }
 function rutaByCodigo(cod){ for(var i=0;i<DB.rutas.length;i++){ if(DB.rutas[i].codigo===cod) return DB.rutas[i]; } return null; }
+/* Una ruta se considera "Argos" cuando su nombre contiene la palabra Argos (sin importar mayúsculas/tildes).
+   Hoy ninguna ruta de la lista maestra incluye esa palabra: agrega o renombra la ruta correspondiente en
+   Configuración → Rutas para que el beneficio automático de abajo empiece a aplicar. */
+function esRutaArgos(rutaCodigo){
+  var r = rutaByCodigo(rutaCodigo);
+  return !!(r && /argos/i.test(r.nombre || ""));
+}
 function vehiculoByPlaca(p){ for(var i=0;i<DB.vehiculos.length;i++){ if(DB.vehiculos[i].placa===p) return DB.vehiculos[i]; } return null; }
 
 function liquidacionExistente(conductorId, quincenaKey){
@@ -924,6 +983,8 @@ function fillCommonSelects(){
   fillSelect(document.getElementById("pConductor"), conductoresActivos(), "id", "nombre");
   fillSelect(document.getElementById("bConductor"), conductoresActivos(), "id", "nombre");
   fillSelect(document.getElementById("bQuincena"), QUINCENAS, "key", "label");
+  fillSelect(document.getElementById("eConductor"), conductoresActivos(), "id", "nombre");
+  fillSelect(document.getElementById("eQuincena"), QUINCENAS, "key", "label");
 
   fillSelect(document.getElementById("lConductor"), DB.conductores, "id", "nombre");
   fillSelect(document.getElementById("lQuincena"), QUINCENAS, "key", "label");
@@ -1012,7 +1073,20 @@ function eliminarViaje(id){
   var v = DB.viajes.filter(function(x){ return x.id===id; })[0];
   if(!v) return;
   if(isQuincenaLocked(v.conductorId, v.fecha)){
-    alert("No se puede eliminar: la quincena de este viaje ya fue aprobada.");
+    /* Solo egutierrez puede eliminar viajes de una quincena ya aprobada/pagada. Chequeo local
+       para la experiencia de usuario — si el backend de Apps Script también debe bloquearlo,
+       hay que replicar esta misma regla allá. */
+    if(usuarioLogin() !== "egutierrez"){
+      alert("No se puede eliminar: la quincena de este viaje ya fue aprobada. Solo el usuario egutierrez puede eliminar viajes de quincenas aprobadas.");
+      return;
+    }
+    var motivo = prompt("Esta quincena ya fue aprobada. Escribe el motivo para eliminar este viaje:");
+    if(!motivo){ alert("Debes indicar un motivo para eliminar un viaje de una quincena aprobada."); return; }
+    if(!confirm("¿Eliminar este registro de viaje de una quincena ya aprobada? Quedará trazabilidad.")) return;
+    DB.viajes = DB.viajes.filter(function(x){ return x.id!==id; });
+    logHistorial("viaje", id, "eliminado de quincena aprobada", JSON.stringify(v), "", motivo, quincenaDeFecha(v.fecha)?quincenaDeFecha(v.fecha).key:"", v.conductorId);
+    saveDB();
+    renderViajesRecientes();
     return;
   }
   if(!confirm("¿Eliminar este registro de viaje?")) return;
@@ -1114,8 +1188,21 @@ function renderPrestamos(){
   var tbody = document.querySelector("#tablaPrestamos tbody");
   tbody.innerHTML = DB.prestamos.length ? DB.prestamos.map(function(p){
     var c = conductorById(p.conductorId);
-    return '<tr><td class="txt">'+(c?c.nombre:p.conductorId)+'</td><td>'+p.fecha+'</td><td class="txt">'+(p.concepto||"")+'</td><td>'+fmt(p.valorInicial)+'</td><td>'+p.numCuotas+'</td><td>'+fmt(p.valorCuota)+'</td><td>'+p.cuotasPagadas+'</td><td>'+fmt(p.saldo)+'</td></tr>';
-  }).join("") : '<tr class="empty-row"><td colspan="8">Sin préstamos registrados.</td></tr>';
+    return '<tr><td class="txt">'+(c?c.nombre:p.conductorId)+'</td><td>'+p.fecha+'</td><td class="txt">'+(p.concepto||"")+'</td><td>'+fmt(p.valorInicial)+'</td><td>'+p.numCuotas+'</td><td>'+fmt(p.valorCuota)+'</td><td>'+p.cuotasPagadas+'</td><td>'+fmt(p.saldo)+'</td><td><button class="btn sm danger" onclick="eliminarPrestamo(\''+p.id+'\')">Eliminar</button></td></tr>';
+  }).join("") : '<tr class="empty-row"><td colspan="9">Sin préstamos registrados.</td></tr>';
+}
+function eliminarPrestamo(id){
+  var p = DB.prestamos.filter(function(x){ return x.id===id; })[0];
+  if(!p) return;
+  var usadoEnAprobada = DB.liquidaciones.some(function(l){ return l.prestamoRef===id && (l.estado==="Aprobada"||l.estado==="Pagada"); });
+  var msg = usadoEnAprobada
+    ? "Este préstamo ya tiene cuotas descontadas en una liquidación aprobada. ¿Eliminarlo de todas formas? Quedará trazabilidad en el historial."
+    : "¿Eliminar este préstamo?";
+  if(!confirm(msg)) return;
+  DB.prestamos = DB.prestamos.filter(function(x){ return x.id!==id; });
+  logHistorial("prestamo", id, "eliminado", JSON.stringify(p), "", "", "", p.conductorId);
+  saveDB();
+  renderPrestamos();
 }
 function prestamoActivoDeConductor(conductorId){
   var list = DB.prestamos.filter(function(p){ return p.conductorId===conductorId && p.saldo>0; });
@@ -1130,23 +1217,111 @@ function guardarBonificacion(){
   var concepto = document.getElementById("bConcepto").value;
   var autorizado = document.getElementById("bAutorizado").value;
   if(!conductorId || !fecha || !quincenaKey || valor<=0){ alert("Completa conductor, fecha, quincena y un valor mayor a cero."); return; }
-  var nuevo = {id:uid(), conductorId:conductorId, fecha:fecha, quincenaKey:quincenaKey, valor:valor, concepto:concepto, autorizadoPor:autorizado};
+  var nuevo = {id:uid(), conductorId:conductorId, fecha:fecha, quincenaKey:quincenaKey, valor:valor, concepto:concepto, autorizadoPor:autorizado, tipoBeneficio:"Bonificación"};
   DB.bonificaciones.push(nuevo);
   logHistorial("bonificacion", nuevo.id, "nueva bonificación", "", fmt(valor)+" "+concepto, "", quincenaKey, conductorId);
   saveDB();
   document.getElementById("bValor").value=""; document.getElementById("bConcepto").value="";
   renderBonificaciones();
 }
+function esEventual(b){ return b.tipoBeneficio==="Eventual"; }
 function renderBonificaciones(){
   var tbody = document.querySelector("#tablaBonificaciones tbody");
-  tbody.innerHTML = DB.bonificaciones.length ? DB.bonificaciones.map(function(b){
+  var lista = DB.bonificaciones.filter(function(b){ return !esEventual(b); });
+  tbody.innerHTML = lista.length ? lista.map(function(b){
     var c = conductorById(b.conductorId); var q = getQuincena(b.quincenaKey);
-    return '<tr><td class="txt">'+(c?c.nombre:b.conductorId)+'</td><td class="txt">'+(q?q.label:b.quincenaKey)+'</td><td>'+b.fecha+'</td><td class="txt">'+(b.concepto||"")+'</td><td>'+fmt(b.valor)+'</td><td class="txt">'+(b.autorizadoPor||"")+'</td></tr>';
-  }).join("") : '<tr class="empty-row"><td colspan="6">Sin bonificaciones registradas.</td></tr>';
+    return '<tr><td class="txt">'+(c?c.nombre:b.conductorId)+'</td><td class="txt">'+(q?q.label:b.quincenaKey)+'</td><td>'+b.fecha+'</td><td class="txt">'+(b.concepto||"")+'</td><td>'+fmt(b.valor)+'</td><td class="txt">'+(b.autorizadoPor||"")+'</td><td><button class="btn sm danger" onclick="eliminarBonificacion(\''+b.id+'\')">Eliminar</button></td></tr>';
+  }).join("") : '<tr class="empty-row"><td colspan="7">Sin bonificaciones registradas.</td></tr>';
+}
+function eliminarBonificacion(id){
+  var b = DB.bonificaciones.filter(function(x){ return x.id===id; })[0];
+  if(!b) return;
+  if(!confirm("¿Eliminar esta bonificación?")) return;
+  DB.bonificaciones = DB.bonificaciones.filter(function(x){ return x.id!==id; });
+  logHistorial("bonificacion", id, "eliminada", JSON.stringify(b), "", "", b.quincenaKey, b.conductorId);
+  saveDB();
+  renderBonificaciones();
 }
 function bonificacionesDeQuincena(conductorId, quincenaKey){
-  return DB.bonificaciones.filter(function(b){ return b.conductorId===conductorId && b.quincenaKey===quincenaKey; }).reduce(function(s,b){ return s+b.valor; },0);
+  return DB.bonificaciones.filter(function(b){ return b.conductorId===conductorId && b.quincenaKey===quincenaKey && !esEventual(b); }).reduce(function(s,b){ return s+b.valor; },0);
 }
+
+/* ===== Beneficios de alimentación por viajes eventuales/duales (carbón, maíz, etc.) =====
+   Se guardan en la misma colección "bonificaciones" (tipoBeneficio:"Eventual") para no
+   depender de una colección nueva en Google Sheets/Apps Script. Se muestran aparte y
+   NUNCA se suman al neto a desembolsar porque ya fueron entregados al conductor. */
+function guardarBeneficioEventual(){
+  var conductorId = document.getElementById("eConductor").value;
+  var fecha = document.getElementById("eFecha").value;
+  var quincenaKey = document.getElementById("eQuincena").value;
+  var viaje = document.getElementById("eViaje").value;
+  var item = document.getElementById("eItem").value;
+  var valor = parseFloat(document.getElementById("eValor").value)||0;
+  var obs = document.getElementById("eObs").value;
+  if(!conductorId || !fecha || !quincenaKey || valor<=0){ alert("Completa conductor, fecha, quincena y un valor mayor a cero."); return; }
+  var nuevo = {id:uid(), conductorId:conductorId, fecha:fecha, quincenaKey:quincenaKey, valor:valor,
+    concepto:(viaje?viaje+" — ":"")+item, autorizadoPor:"", tipoBeneficio:"Eventual", viajeRelacionado:viaje, item:item, observacion:obs};
+  DB.bonificaciones.push(nuevo);
+  logHistorial("bonificacion", nuevo.id, "beneficio viaje eventual", "", fmt(valor)+" "+item+(viaje?" ("+viaje+")":""), obs, quincenaKey, conductorId);
+  saveDB();
+  document.getElementById("eValor").value=""; document.getElementById("eViaje").value=""; document.getElementById("eObs").value="";
+  renderBeneficiosEventuales();
+}
+function renderBeneficiosEventuales(){
+  var tbody = document.querySelector("#tablaBeneficiosEventuales tbody");
+  var lista = DB.bonificaciones.filter(esEventual);
+  tbody.innerHTML = lista.length ? lista.map(function(b){
+    var c = conductorById(b.conductorId); var q = getQuincena(b.quincenaKey);
+    return '<tr><td class="txt">'+(c?c.nombre:b.conductorId)+'</td><td class="txt">'+(q?q.label:b.quincenaKey)+'</td><td>'+b.fecha+'</td><td class="txt">'+(b.viajeRelacionado||"")+'</td><td class="txt">'+(b.item||"")+'</td><td>'+fmt(b.valor)+'</td><td class="txt">'+(b.observacion||"")+'</td><td><button class="btn sm danger" onclick="eliminarBonificacion(\''+b.id+'\')">Eliminar</button></td></tr>';
+  }).join("") : '<tr class="empty-row"><td colspan="8">Sin beneficios de viajes eventuales registrados.</td></tr>';
+}
+function beneficiosEventualesDeQuincena(conductorId, quincenaKey){
+  return DB.bonificaciones.filter(function(b){ return b.conductorId===conductorId && b.quincenaKey===quincenaKey && esEventual(b); }).reduce(function(s,b){ return s+b.valor; },0);
+}
+
+/* Tabla de selección de beneficio de alimentación anticipada por ruta (desayuno/almuerzo/cena),
+   solo para rutas distintas de Argos. El valor de cada ítem se multiplica por los viajes que el
+   conductor hizo en esa ruta durante la quincena. */
+function renderLiqAlimNoArgos(porRutaNoArgos, existente){
+  var valoresGuardados = existente ? existente.alimNoArgosValores : null;
+  document.getElementById("liqValorDesayuno").value = valoresGuardados ? valoresGuardados.desayuno : (document.getElementById("liqValorDesayuno").value || 6000);
+  document.getElementById("liqValorAlmuerzo").value = valoresGuardados ? valoresGuardados.almuerzo : (document.getElementById("liqValorAlmuerzo").value || 9000);
+  document.getElementById("liqValorCena").value = valoresGuardados ? valoresGuardados.cena : (document.getElementById("liqValorCena").value || 9000);
+
+  var seleccionGuardada = (existente && existente.alimNoArgosSeleccion) || {};
+  var tbody = document.querySelector("#tablaLiqAlimNoArgos tbody");
+  var codigos = Object.keys(porRutaNoArgos);
+  tbody.innerHTML = codigos.length ? codigos.map(function(cod){
+    var r = rutaByCodigo(cod); var b = porRutaNoArgos[cod];
+    var sel = seleccionGuardada[cod] || {};
+    function chk(item){ return '<input type="checkbox" class="liqAlimNoArgosChk" data-ruta="'+cod+'" data-item="'+item+'"'+(sel[item]?' checked':'')+'>'; }
+    return '<tr><td class="txt">'+(r?r.nombre:cod)+'</td><td>'+b.viajes+'</td><td>'+chk("desayuno")+'</td><td>'+chk("almuerzo")+'</td><td>'+chk("cena")+'</td></tr>';
+  }).join("") : '<tr class="empty-row"><td colspan="5">Sin viajes en rutas distintas de Argos en esta quincena.</td></tr>';
+
+  document.querySelectorAll(".liqAlimNoArgosChk").forEach(function(el){ el.addEventListener("change", recalcLiquidacion); });
+}
+function calcularAlimNoArgos(){
+  var vD = parseFloat(document.getElementById("liqValorDesayuno").value)||0;
+  var vA = parseFloat(document.getElementById("liqValorAlmuerzo").value)||0;
+  var vC = parseFloat(document.getElementById("liqValorCena").value)||0;
+  var porRutaNoArgos = (window.currentLiq && window.currentLiq.porRutaNoArgos) || {};
+  var total = 0;
+  var seleccion = {};
+  document.querySelectorAll(".liqAlimNoArgosChk").forEach(function(el){
+    var cod = el.dataset.ruta, item = el.dataset.item;
+    seleccion[cod] = seleccion[cod] || {};
+    seleccion[cod][item] = el.checked;
+    if(el.checked){
+      var viajes = porRutaNoArgos[cod] ? porRutaNoArgos[cod].viajes : 0;
+      var valor = item==="desayuno" ? vD : (item==="almuerzo" ? vA : vC);
+      total += viajes*valor;
+    }
+  });
+  return {total:total, seleccion:seleccion, valores:{desayuno:vD, almuerzo:vA, cena:vC}};
+}
+["liqValorDesayuno","liqValorAlmuerzo","liqValorCena"].forEach(function(id){
+  document.getElementById(id).addEventListener("input", recalcLiquidacion);
+});
 
 function cargarLiquidacion(){
   var conductorId = document.getElementById("lConductor").value;
@@ -1158,9 +1333,26 @@ function cargarLiquidacion(){
 
   var viajesPeriodo = DB.viajes.filter(function(v){ return v.conductorId===conductorId && v.fecha>=q.inicio && v.fecha<=q.fin; });
   var totalProducido = viajesPeriodo.reduce(function(s,v){ return s+v.total; },0);
-  var diasTrabajados = {}; viajesPeriodo.forEach(function(v){ diasTrabajados[v.fecha]=1; });
+
+  /* Beneficio de alimentación Argos: automático. Un día "califica" cuando el conductor hizo 3 o más
+     viajes en rutas relacionadas con Argos ese mismo día. Cada día que califica suma 1 unidad (no es
+     acumulable por cada grupo de 3 — es un beneficio fijo por día calificado). */
+  var viajesArgosPorDia = {};
+  viajesPeriodo.forEach(function(v){ if(esRutaArgos(v.rutaCodigo)) viajesArgosPorDia[v.fecha] = (viajesArgosPorDia[v.fecha]||0) + v.cantidad; });
+  var diasArgosCalificados = Object.keys(viajesArgosPorDia).filter(function(f){ return viajesArgosPorDia[f] >= 3; });
+  var unidadesAlimSugeridas = diasArgosCalificados.length;
+
   var porRuta = {};
   viajesPeriodo.forEach(function(v){ porRuta[v.rutaCodigo]=porRuta[v.rutaCodigo]||{viajes:0,total:0}; porRuta[v.rutaCodigo].viajes+=v.cantidad; porRuta[v.rutaCodigo].total+=v.total; });
+
+  /* Rutas distintas de Argos con viajes en la quincena — para seleccionar qué beneficio de
+     alimentación anticipada (desayuno/almuerzo/cena) se entregó en cada una. */
+  var porRutaNoArgos = {};
+  viajesPeriodo.forEach(function(v){
+    if(esRutaArgos(v.rutaCodigo)) return;
+    porRutaNoArgos[v.rutaCodigo] = porRutaNoArgos[v.rutaCodigo] || {viajes:0};
+    porRutaNoArgos[v.rutaCodigo].viajes += v.cantidad;
+  });
 
   var prestamo = prestamoActivoDeConductor(conductorId);
   var cuotaSugerida = prestamo ? Math.min(prestamo.valorCuota, prestamo.saldo) : 0;
@@ -1188,11 +1380,18 @@ function cargarLiquidacion(){
   document.getElementById("liqPrestamo").value = existente ? existente.prestamoDescontado : cuotaSugerida;
   document.getElementById("liqBonificacion").value = existente ? existente.bonificacion : bonifSugerida;
   document.getElementById("liqBasico").value = existente ? existente.basico : c.basico;
-  document.getElementById("liqDiasAlim").value = existente ? existente.alimentacionDias : Object.keys(diasTrabajados).length;
+  /* El beneficio Argos SIEMPRE se recalcula automáticamente a partir de los viajes registrados
+     — nunca se toma de una liquidación guardada previamente (podría venir de una fórmula anterior
+     o de datos que cambiaron después de guardar). Solo el valor por día es editable/recordado. */
+  document.getElementById("liqDiasAlim").value = unidadesAlimSugeridas;
   document.getElementById("liqValorDiaAlim").value = existente ? existente.alimentacionValorDia : c.alimentacionDia;
   document.getElementById("liqComentario").value = existente ? (existente.comentario||"") : "";
+  document.getElementById("liqArgosDetalle").textContent = diasArgosCalificados.length
+    ? "Días con 3+ viajes en rutas Argos en esta quincena: "+diasArgosCalificados.join(", ")
+    : "Ningún día de esta quincena tiene 3 o más viajes en rutas Argos todavía.";
 
-  window.currentLiq = {conductorId:conductorId, quincenaKey:quincenaKey, totalProducido:totalProducido, prestamoRef: prestamo?prestamo.id:null};
+  window.currentLiq = {conductorId:conductorId, quincenaKey:quincenaKey, totalProducido:totalProducido, prestamoRef: prestamo?prestamo.id:null, porRutaNoArgos: porRutaNoArgos};
+  renderLiqAlimNoArgos(porRutaNoArgos, existente);
   recalcLiquidacion();
 
   var alertZone = document.getElementById("liqAlertZone");
@@ -1219,10 +1418,16 @@ function recalcLiquidacion(){
   var adicional = subtotal - basico + bonificacion;
   var alimTotal = diasAlim*valorDiaAlim;
   var neto = adicional + basico + alimTotal;
+  var alimNoArgos = calcularAlimNoArgos();
+  window.currentLiq.alimNoArgos = alimNoArgos;
+  var totalQuincena = neto + alimNoArgos.total;
 
   document.getElementById("liqSubtotal").textContent = fmt(subtotal);
   document.getElementById("liqAdicional").textContent = fmt(adicional);
   document.getElementById("liqAlimTotal").textContent = fmt(alimTotal);
+  document.getElementById("liqAlimNoArgosTotal").textContent = fmt(alimNoArgos.total);
+  document.getElementById("liqTotalQuincena").textContent = fmt(totalQuincena);
+  document.getElementById("liqBenefNoArgosLinea").textContent = fmt(alimNoArgos.total);
   document.getElementById("liqNeto").textContent = fmt(neto);
 }
 
@@ -1261,6 +1466,8 @@ function guardarLiquidacion(estado){
   var adicional = subtotal - basico + bonificacion;
   var alimTotal = diasAlim*valorDiaAlim;
   var neto = adicional + basico + alimTotal;
+  var alimNoArgos = calcularAlimNoArgos();
+  var totalQuincena = neto + alimNoArgos.total;
   var comentario = document.getElementById("liqComentario").value;
 
   var estadoAnterior = existente ? existente.estado : null;
@@ -1269,6 +1476,8 @@ function guardarLiquidacion(estado){
   registro.totalProducido = producido; registro.seguridadSocial = segSocial; registro.prestamoDescontado = prestamoVal;
   registro.subtotal = subtotal; registro.bonificacion = bonificacion; registro.basico = basico; registro.adicional = adicional;
   registro.alimentacionDias = diasAlim; registro.alimentacionValorDia = valorDiaAlim; registro.alimentacionTotal = alimTotal;
+  registro.alimNoArgosSeleccion = alimNoArgos.seleccion; registro.alimNoArgosValores = alimNoArgos.valores; registro.alimNoArgosTotal = alimNoArgos.total;
+  registro.totalQuincenaConEventuales = totalQuincena;
   registro.neto = neto; registro.comentario = comentario; registro.updatedAt = nowDateStr()+" "+nowTimeStr();
   registro.elaboradoPor = registro.elaboradoPor || usuario();
   registro.prestamoRef = window.currentLiq.prestamoRef || registro.prestamoRef || "";
@@ -1278,28 +1487,49 @@ function guardarLiquidacion(estado){
   var nombreC = cInfo ? cInfo.nombre : conductorId;
   var labelQ = qInfo ? qInfo.label : quincenaKey;
 
+  if(!existente){ DB.liquidaciones.push(registro); }
+
   if(estado==="Aprobada"){
-    alertZone.innerHTML = '<div class="callout info">Enviando aprobación a Google Sheets…</div>';
+    /* Aprobar se guarda igual que cualquier otro cambio (patch_db, el mismo canal que ya
+       funciona para Borrador/En revisión/Rechazada). Antes se usaba un tipo de operación
+       especial ("aprobar_liquidacion") que Apps Script no reconocía y por eso fallaba. */
     registro.estado = "Aprobada";
-    enviarPostAppsScriptConRespuesta({
-      tipo: "aprobar_liquidacion",
-      usuario: usuarioLogin(),
-      fechaEnvio: nowDateStr()+" "+nowTimeStr(),
-      registro: registro,
-      prestamoDescuento: (window.currentLiq.prestamoRef && prestamoVal>0) ? {id:window.currentLiq.prestamoRef, valor:prestamoVal} : null
-    }).then(function(resp){
-      if(!resp || !resp.ok) throw new Error((resp && resp.error) || "Apps Script rechazó la aprobación.");
-      alertZone.innerHTML = '<div class="callout ok">La liquidación de <b>'+labelQ+'</b> para <b>'+nombreC+'</b> quedó aprobada en Google Sheets. Se envió el correo de notificación.</div>';
-      return recargarDesdeGoogleSheets(false);
-    }).then(function(){
-      cargarLiquidacion(); renderAprobaciones(); renderAnualDashboard();
-    }).catch(function(err){
-      alertZone.innerHTML = '<div class="callout danger">No se pudo aprobar: '+err.message+'</div>';
-    });
+    registro.aprobadoPor = usuario();
+    registro.fechaAprobacion = nowDateStr();
+    registro.horaAprobacion = nowTimeStr();
+
+    if(window.currentLiq.prestamoRef && prestamoVal>0){
+      var pref = DB.prestamos.filter(function(p){ return p.id===window.currentLiq.prestamoRef; })[0];
+      if(pref){
+        pref.saldo = Math.max(0, Math.round((pref.saldo||0) - prestamoVal));
+        pref.cuotasPagadas = (pref.cuotasPagadas||0) + 1;
+        logHistorial("prestamo", pref.id, "cuota descontada", "", fmt(prestamoVal)+" ("+labelQ+")", "", quincenaKey, conductorId);
+      }
+    }
+
+    logHistorial("liquidacion", registro.id, "estado", estadoAnterior||"(nueva)", "Aprobada", comentario, quincenaKey, conductorId);
+    saveDB();
+
+    var asuntoOk = "Liquidación aprobada — "+labelQ;
+    var cuerpoOk = "La liquidación quincenal fue aprobada:\n\n" +
+      "Conductor: "+nombreC+"\n"+
+      "Quincena: "+labelQ+"\n"+
+      "Total producido: "+fmt(producido)+"\n"+
+      (alimNoArgos.total ? "Beneficio de alimentación anticipada (rutas no-Argos) ya entregado: "+fmt(alimNoArgos.total)+"\n" : "") +
+      "Total neto a desembolsar: "+fmt(neto)+"\n\n"+
+      "Aprobado por: "+registro.aprobadoPor+" el "+registro.fechaAprobacion+" "+registro.horaAprobacion+"\n"+
+      "Elaborado por: "+registro.elaboradoPor;
+    abrirGmailCompose(CORREO_NOTIFICACION_APROBACION, asuntoOk, cuerpoOk);
+
+    cargarLiquidacion();
+    renderAprobaciones();
+    renderAnualDashboard();
+    renderPrestamos();
+
+    alertZone.innerHTML = '<div class="callout ok">La liquidación de <b>'+labelQ+'</b> para <b>'+nombreC+'</b> quedó <b>aprobada</b> por '+registro.aprobadoPor+' el '+registro.fechaAprobacion+' '+registro.horaAprobacion+'. Se abrió una ventana de Gmail para notificar al usuario elaborador — puedes cerrarla si no la necesitas.</div>';
     return;
   }
 
-  if(!existente){ DB.liquidaciones.push(registro); }
   logHistorial("liquidacion", registro.id, "estado", estadoAnterior||"(nueva)", estado, comentario, quincenaKey, conductorId);
   registro.estado = estado;
   saveDB();
@@ -1340,8 +1570,8 @@ function renderAprobaciones(){
   var pillMap = {"Borrador":"borrador","En revisión":"revision","Aprobada":"aprobada","Rechazada":"rechazada","Pagada":"pagada"};
   tbody.innerHTML = rows.length ? rows.slice().sort(function(a,b){ return b.quincenaKey.localeCompare(a.quincenaKey); }).map(function(l){
     var c = conductorById(l.conductorId); var q = getQuincena(l.quincenaKey);
-    return '<tr style="cursor:pointer;" onclick="irALiquidacion(\''+l.conductorId+'\',\''+l.quincenaKey+'\')"><td class="txt">'+(q?q.label:l.quincenaKey)+'</td><td class="txt">'+(c?c.nombre:l.conductorId)+'</td><td>'+fmt(l.totalProducido)+'</td><td>'+fmt(l.neto)+'</td><td><span class="pill '+(pillMap[l.estado]||"borrador")+'">'+l.estado+'</span></td><td class="txt">'+(l.aprobadoPor||"")+'</td><td>'+(l.fechaAprobacion||"")+'</td><td>'+(l.horaAprobacion||"")+'</td></tr>';
-  }).join("") : '<tr class="empty-row"><td colspan="8">Sin liquidaciones para este filtro.</td></tr>';
+    return '<tr style="cursor:pointer;" onclick="irALiquidacion(\''+l.conductorId+'\',\''+l.quincenaKey+'\')"><td class="txt">'+(q?q.label:l.quincenaKey)+'</td><td class="txt">'+(c?c.nombre:l.conductorId)+'</td><td>'+fmt(l.totalProducido)+'</td><td>'+fmt(l.neto)+'</td><td><span class="pill '+(pillMap[l.estado]||"borrador")+'">'+l.estado+'</span></td><td class="txt">'+(l.elaboradoPor||"")+'</td><td class="txt">'+(l.aprobadoPor||"")+'</td><td>'+(l.fechaAprobacion||"")+'</td><td>'+(l.horaAprobacion||"")+'</td></tr>';
+  }).join("") : '<tr class="empty-row"><td colspan="9">Sin liquidaciones para este filtro.</td></tr>';
 }
 function irALiquidacion(conductorId, quincenaKey){
   document.querySelector('.tab-btn[data-tab="liquidacion"]').click();
@@ -1392,32 +1622,84 @@ function renderAnualDashboard(){
     return '<tr><td class="txt">'+c.nombre+'</td>'+cells+'<td><b>'+fmt(totalAno)+'</b></td></tr>';
   }).join("");
 
-  renderBarList("barConductor", DB.conductores.map(function(c){
-    var total = viajesAno.filter(function(v){ return v.conductorId===c.id; }).reduce(function(s,v){ return s+v.total; },0);
-    return {label:c.nombre, value:total};
-  }));
-  renderBarList("barRuta", DB.rutas.map(function(r){
-    var total = viajesAno.filter(function(v){ return v.rutaCodigo===r.codigo; }).reduce(function(s,v){ return s+v.total; },0);
-    return {label:r.nombre, value:total};
-  }));
-  renderBarList("barVehiculo", DB.vehiculos.map(function(v){
-    var total = viajesAno.filter(function(x){ return x.vehiculo===v.placa; }).reduce(function(s,x){ return s+x.cantidad; },0);
-    return {label:v.placa, value:total};
-  }));
-  renderBarList("barMes", MESES.map(function(m,i){
+  var chartLabelsConductor = DB.conductores.map(function(c){ return c.nombre; });
+  var chartDataConductor = DB.conductores.map(function(c){
+    return viajesAno.filter(function(v){ return v.conductorId===c.id; }).reduce(function(s,v){ return s+v.total; },0);
+  });
+  dibujarChart("chartConductor", "bar", chartLabelsConductor, [{label:"Producido "+anio, data:chartDataConductor, backgroundColor:"#CE8813"}]);
+
+  var chartLabelsRuta = DB.rutas.map(function(r){ return r.nombre; });
+  var chartDataRuta = DB.rutas.map(function(r){
+    return viajesAno.filter(function(v){ return v.rutaCodigo===r.codigo; }).reduce(function(s,v){ return s+v.total; },0);
+  });
+  dibujarChart("chartRuta", "bar", chartLabelsRuta, [{label:"Producido "+anio, data:chartDataRuta, backgroundColor:"#0B4258"}]);
+
+  var chartLabelsVeh = DB.vehiculos.map(function(v){ return v.placa; });
+  var chartDataVeh = DB.vehiculos.map(function(v){
+    return viajesAno.filter(function(x){ return x.vehiculo===v.placa; }).reduce(function(s,x){ return s+x.cantidad; },0);
+  });
+  dibujarChart("chartVehiculo", "bar", chartLabelsVeh, [{label:"Viajes "+anio, data:chartDataVeh, backgroundColor:"#2E6B4C"}]);
+
+  var porMes = MESES.map(function(m,i){
     var total = viajesAno.filter(function(v){ var q=quincenaDeFecha(v.fecha); return q && q.mes===i+1; }).reduce(function(s,v){ return s+v.total; },0);
-    return {label:m, value:total};
-  }));
+    return {mes:m, total:total};
+  });
+  dibujarChart("chartMes", "line", porMes.map(function(p){ return p.mes.slice(0,3); }),
+    [{label:"Total producido", data:porMes.map(function(p){ return p.total; }), borderColor:"#CE8813", backgroundColor:"rgba(206,136,19,.18)", fill:true, tension:.3, pointRadius:4}]);
+
+  document.getElementById("diagnosticoAnual").innerHTML = generarDiagnosticoAnual(anio, viajesAno, porMes);
 }
-function renderBarList(containerId, items){
-  var max = Math.max.apply(null, items.map(function(i){ return i.value; }).concat([1]));
-  var el = document.getElementById(containerId);
-  var withValues = items.filter(function(i){ return i.value>0; });
-  if(withValues.length===0){ el.innerHTML = '<p class="hint">Sin datos todavía.</p>'; return; }
-  el.innerHTML = items.map(function(i){
-    var pct = Math.max(2,(i.value/max)*100);
-    return '<div class="bar-row"><span class="bl-label">'+i.label+'</span><div class="bl-track"><div class="bl-fill" style="width:'+pct+'%"></div></div><span class="bl-val">'+fmt(i.value)+'</span></div>';
-  }).join("");
+
+var CHARTS_ANUAL = {};
+function dibujarChart(canvasId, tipo, labels, datasets){
+  var canvas = document.getElementById(canvasId);
+  if(!canvas || typeof Chart === "undefined") return;
+  if(CHARTS_ANUAL[canvasId]) CHARTS_ANUAL[canvasId].destroy();
+  CHARTS_ANUAL[canvasId] = new Chart(canvas, {
+    type: tipo,
+    data: {labels: labels, datasets: datasets},
+    options: {
+      responsive:true, maintainAspectRatio:false,
+      plugins:{legend:{display:datasets.length>1}},
+      scales:{ y:{ beginAtZero:true, ticks:{ callback:function(v){ return fmt(v); } } } }
+    }
+  });
+}
+
+function generarDiagnosticoAnual(anio, viajesAno, porMes){
+  var hallazgos = [];
+  var conDatos = porMes.filter(function(p){ return p.total>0; });
+  if(conDatos.length>=2){
+    var max = conDatos.reduce(function(a,b){ return b.total>a.total?b:a; });
+    var min = conDatos.reduce(function(a,b){ return b.total<a.total?b:a; });
+    hallazgos.push('<div class="finding"><b>Pico de producción — '+max.mes+' '+anio+'.</b> Total producido: '+fmt(max.total)+' (todos los conductores).</div>');
+    if(min.mes!==max.mes){
+      hallazgos.push('<div class="finding"><b>Mes más bajo — '+min.mes+' '+anio+'.</b> Total producido: '+fmt(min.total)+'. Revisar si hubo menos operación, vehículos en taller o novedades.</div>');
+    }
+  }
+
+  DB.conductores.forEach(function(c){
+    var porMesC = [];
+    for(var m=1;m<=12;m++){
+      var total = viajesAno.filter(function(v){ var q=quincenaDeFecha(v.fecha); return v.conductorId===c.id && q && q.mes===m; }).reduce(function(s,v){ return s+v.total; },0);
+      if(total>0) porMesC.push({mes:MESES[m-1], total:total});
+    }
+    if(porMesC.length<2) return;
+    var promedio = porMesC.reduce(function(s,p){ return s+p.total; },0)/porMesC.length;
+    var picoC = porMesC.reduce(function(a,b){ return b.total>a.total?b:a; });
+    hallazgos.push('<div class="finding"><b>'+c.nombre+'</b> — mejor mes: '+picoC.mes+' ('+fmt(picoC.total)+'). Promedio mensual activo: '+fmt(promedio)+'.</div>');
+    porMesC.forEach(function(p){
+      if(p.total < promedio*0.6){
+        var caida = Math.round((1-p.total/promedio)*100);
+        hallazgos.push('<div class="callout warn"><b>⚠ Baja producción — '+c.nombre+', '+p.mes+'.</b> Produjo '+fmt(p.total)+', '+caida+'% por debajo de su promedio mensual ('+fmt(promedio)+'). Revisar causa (menos viajes asignados, vehículo en taller, novedades del conductor) y tomar correctivo.</div>');
+      }
+    });
+  });
+
+  if(!hallazgos.length){
+    return '<p class="hint">Aún no hay suficientes datos para generar un diagnóstico. Se necesitan al menos dos meses con viajes registrados en '+anio+'.</p>';
+  }
+  return hallazgos.join("");
 }
 
 function consulta1(){
@@ -1623,8 +1905,9 @@ function exportarConsolidados(){
 }
 function exportarPrestamos(){
   var fp = DB.prestamos.map(function(p){ var c=conductorById(p.conductorId); return {Conductor:c?c.nombre:p.conductorId, Fecha:p.fecha, Concepto:p.concepto||"", "Valor inicial":p.valorInicial, Cuotas:p.numCuotas, "Valor cuota":p.valorCuota, "Cuotas pagadas":p.cuotasPagadas, Saldo:p.saldo}; });
-  var fb = DB.bonificaciones.map(function(b){ var c=conductorById(b.conductorId); var q=getQuincena(b.quincenaKey); return {Conductor:c?c.nombre:b.conductorId, Quincena:q?q.label:b.quincenaKey, Fecha:b.fecha, Concepto:b.concepto||"", Valor:b.valor, "Autorizado por":b.autorizadoPor||""}; });
-  var wb = libroDesde([ hojaDesde("Prestamos", fp), hojaDesde("Bonificaciones", fb) ]);
+  var fb = DB.bonificaciones.filter(function(b){return !esEventual(b);}).map(function(b){ var c=conductorById(b.conductorId); var q=getQuincena(b.quincenaKey); return {Conductor:c?c.nombre:b.conductorId, Quincena:q?q.label:b.quincenaKey, Fecha:b.fecha, Concepto:b.concepto||"", Valor:b.valor, "Autorizado por":b.autorizadoPor||""}; });
+  var fe = DB.bonificaciones.filter(esEventual).map(function(b){ var c=conductorById(b.conductorId); var q=getQuincena(b.quincenaKey); return {Conductor:c?c.nombre:b.conductorId, Quincena:q?q.label:b.quincenaKey, Fecha:b.fecha, Viaje:b.viajeRelacionado||"", Item:b.item||"", Valor:b.valor, Observacion:b.observacion||""}; });
+  var wb = libroDesde([ hojaDesde("Prestamos", fp), hojaDesde("Bonificaciones", fb), hojaDesde("BeneficiosViajesEventuales", fe) ]);
   descargarLibro(wb, "prestamos-bonificaciones-"+nowDateStr()+".xlsx");
 }
 function exportarAprobaciones(){
@@ -1636,7 +1919,7 @@ function exportarAprobaciones(){
     return true;
   });
   var filas = rows.map(function(l){ var c=conductorById(l.conductorId); var q=getQuincena(l.quincenaKey);
-    return {Quincena:q?q.label:l.quincenaKey, Conductor:c?c.nombre:l.conductorId, "Total producido":l.totalProducido, "Seguridad social":l.seguridadSocial, "Prestamo":l.prestamoDescontado, "Bonificacion":l.bonificacion, "Basico":l.basico, "Adicional":l.adicional, "Alimentacion":l.alimentacionTotal, "Neto a pagar":l.neto, Estado:l.estado, "Aprobado por":l.aprobadoPor||"", Fecha:l.fechaAprobacion||"", Hora:l.horaAprobacion||""}; });
+    return {Quincena:q?q.label:l.quincenaKey, Conductor:c?c.nombre:l.conductorId, "Total producido":l.totalProducido, "Seguridad social":l.seguridadSocial, "Prestamo":l.prestamoDescontado, "Bonificacion":l.bonificacion, "Basico":l.basico, "Adicional":l.adicional, "Alimentacion":l.alimentacionTotal, "Beneficios viajes eventuales":l.beneficiosEventualesTotal||0, "Neto a pagar":l.neto, Estado:l.estado, "Elaborado por":l.elaboradoPor||"", "Aprobado por":l.aprobadoPor||"", Fecha:l.fechaAprobacion||"", Hora:l.horaAprobacion||""}; });
   var wb = libroDesde([ hojaDesde("Aprobaciones", filas) ]);
   descargarLibro(wb, "aprobaciones-"+nowDateStr()+".xlsx");
 }
@@ -1904,6 +2187,7 @@ function renderTodo(){
   renderConsolidados();
   renderPrestamos();
   renderBonificaciones();
+  renderBeneficiosEventuales();
   renderAprobaciones();
   renderHistorial();
   renderAnualDashboard();
@@ -2118,7 +2402,7 @@ function actualizarEstadoAppsScript(texto, tipo){
 
 var TAB_REFRESH = {
   consolidados: renderConsolidados,
-  prestamos: function(){ renderPrestamos(); renderBonificaciones(); },
+  prestamos: function(){ renderPrestamos(); renderBonificaciones(); renderBeneficiosEventuales(); },
   aprobaciones: renderAprobaciones,
   historial: renderHistorial,
   anual: renderAnualDashboard,
@@ -2161,6 +2445,7 @@ function init(){
   document.getElementById("vFecha").value = nowDateStr();
   document.getElementById("pFecha").value = nowDateStr();
   document.getElementById("bFecha").value = nowDateStr();
+  document.getElementById("eFecha").value = nowDateStr();
 
   /* Sin sesión no se toca Google Sheets todavía: se espera a que el usuario inicie sesión. */
   if(SESION) arrancarAplicativoTrasLogin();
