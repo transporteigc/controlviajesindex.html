@@ -455,7 +455,7 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
     </div>
   </div>
   <div class="table-wrap"><table class="data" id="tablaAprobaciones">
-    <thead><tr><th>Quincena</th><th>Conductor</th><th>Total producido</th><th>Neto a pagar</th><th>Estado</th><th>Elaborado por</th><th>Aprobado por</th><th>Fecha aprobación</th><th>Hora aprobación</th></tr></thead>
+    <thead><tr><th>Quincena</th><th>Conductor</th><th>Total producido</th><th>Neto a pagar</th><th>Estado</th><th>Elaborado por</th><th>Aprobado por</th><th>Fecha aprobación</th><th>Hora aprobación</th><th>Acciones</th></tr></thead>
     <tbody></tbody>
   </table></div>
 </section>
@@ -1568,10 +1568,34 @@ function renderAprobaciones(){
   });
   var tbody = document.querySelector("#tablaAprobaciones tbody");
   var pillMap = {"Borrador":"borrador","En revisión":"revision","Aprobada":"aprobada","Rechazada":"rechazada","Pagada":"pagada"};
+  var puedeEliminar = usuarioLogin() === "egutierrez";
   tbody.innerHTML = rows.length ? rows.slice().sort(function(a,b){ return b.quincenaKey.localeCompare(a.quincenaKey); }).map(function(l){
     var c = conductorById(l.conductorId); var q = getQuincena(l.quincenaKey);
-    return '<tr style="cursor:pointer;" onclick="irALiquidacion(\''+l.conductorId+'\',\''+l.quincenaKey+'\')"><td class="txt">'+(q?q.label:l.quincenaKey)+'</td><td class="txt">'+(c?c.nombre:l.conductorId)+'</td><td>'+fmt(l.totalProducido)+'</td><td>'+fmt(l.neto)+'</td><td><span class="pill '+(pillMap[l.estado]||"borrador")+'">'+l.estado+'</span></td><td class="txt">'+(l.elaboradoPor||"")+'</td><td class="txt">'+(l.aprobadoPor||"")+'</td><td>'+(l.fechaAprobacion||"")+'</td><td>'+(l.horaAprobacion||"")+'</td></tr>';
-  }).join("") : '<tr class="empty-row"><td colspan="9">Sin liquidaciones para este filtro.</td></tr>';
+    var accion = puedeEliminar
+      ? '<button class="btn sm danger" onclick="event.stopPropagation(); eliminarAprobacion(\''+l.id+'\')">Eliminar</button>'
+      : '';
+    return '<tr style="cursor:pointer;" onclick="irALiquidacion(\''+l.conductorId+'\',\''+l.quincenaKey+'\')"><td class="txt">'+(q?q.label:l.quincenaKey)+'</td><td class="txt">'+(c?c.nombre:l.conductorId)+'</td><td>'+fmt(l.totalProducido)+'</td><td>'+fmt(l.neto)+'</td><td><span class="pill '+(pillMap[l.estado]||"borrador")+'">'+l.estado+'</span></td><td class="txt">'+(l.elaboradoPor||"")+'</td><td class="txt">'+(l.aprobadoPor||"")+'</td><td>'+(l.fechaAprobacion||"")+'</td><td>'+(l.horaAprobacion||"")+'</td><td>'+accion+'</td></tr>';
+  }).join("") : '<tr class="empty-row"><td colspan="10">Sin liquidaciones para este filtro.</td></tr>';
+}
+function eliminarAprobacion(id){
+  /* Solo egutierrez puede eliminar liquidaciones desde "Aprobaciones", sin importar el estado
+     en que estén (Borrador, En revisión, Aprobada, Rechazada o Pagada). Chequeo local para la
+     experiencia de usuario — si el backend de Apps Script también debe bloquearlo, hay que
+     replicar esta misma regla allá. */
+  if(usuarioLogin() !== "egutierrez"){
+    alert("Solo el usuario egutierrez puede eliminar liquidaciones desde Aprobaciones.");
+    return;
+  }
+  var l = DB.liquidaciones.filter(function(x){ return x.id===id; })[0];
+  if(!l) return;
+  var c = conductorById(l.conductorId); var q = getQuincena(l.quincenaKey);
+  var motivo = prompt("Escribe el motivo para eliminar esta liquidación ("+(q?q.label:l.quincenaKey)+" — "+(c?c.nombre:l.conductorId)+", estado actual: "+l.estado+"):");
+  if(!motivo){ alert("Debes indicar un motivo para eliminar la liquidación."); return; }
+  if(!confirm("¿Eliminar definitivamente esta liquidación? Quedará trazabilidad en el historial.")) return;
+  DB.liquidaciones = DB.liquidaciones.filter(function(x){ return x.id!==id; });
+  logHistorial("liquidacion", id, "eliminada desde Aprobaciones (estado: "+l.estado+")", JSON.stringify(l), "", motivo, l.quincenaKey, l.conductorId);
+  saveDB();
+  renderAprobaciones();
 }
 function irALiquidacion(conductorId, quincenaKey){
   document.querySelector('.tab-btn[data-tab="liquidacion"]').click();
