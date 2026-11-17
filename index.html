@@ -986,6 +986,16 @@ function vehiculosActivos(){ return DB.vehiculos.filter(function(v){ return v.es
 function rutasActivas(){ return DB.rutas.filter(function(r){ return r.estado==="Activo"; }); }
 
 function fillCommonSelects(){
+  var previos = {};
+  document.querySelectorAll("select").forEach(function(sel){ if(sel.id && sel.options.length) previos[sel.id] = sel.value; });
+  fillCommonSelectsBase();
+  Object.keys(previos).forEach(function(id){
+    var sel = document.getElementById(id); if(!sel) return;
+    var v = previos[id];
+    for(var i=0;i<sel.options.length;i++){ if(sel.options[i].value===v){ sel.value = v; break; } }
+  });
+}
+function fillCommonSelectsBase(){
   fillSelect(document.getElementById("vConductor"), conductoresActivos(), "id", "nombre");
   fillSelect(document.getElementById("vVehiculo"), vehiculosActivos(), "placa", "placa");
   fillSelect(document.getElementById("vRuta"), rutasActivas(), "codigo", "nombre");
@@ -2326,7 +2336,7 @@ function enviarPostAppsScriptConRespuesta(payload){
 function programarSincronizacionAppsScript(){
   if(!SYNC_READY || !REMOTE_BASELINE) return;
   clearTimeout(asTimer);
-  asTimer = setTimeout(sincronizarCambiosAppsScript, 500);
+  asTimer = setTimeout(sincronizarCambiosAppsScript, 150);
 }
 
 function sincronizarCambiosAppsScript(){
@@ -2346,8 +2356,8 @@ function sincronizarCambiosAppsScript(){
     operaciones:ops
   }).then(function(){
     REMOTE_BASELINE = snapshotEnviado;
-    actualizarEstadoAppsScript("cambios enviados. Confirmando con Google Sheets…", "ok");
-    setTimeout(function(){ recargarDesdeGoogleSheets(false); }, 1200);
+    actualizarEstadoAppsScript("conectado. Cambios guardados en Google Sheets.", "ok");
+    confirmarEnSegundoPlano();
   }).catch(function(err){
     actualizarEstadoAppsScript("no se pudo enviar: "+err.message+". El cambio queda en la caché local.", "warn");
   }).finally(function(){
@@ -2358,6 +2368,23 @@ function sincronizarCambiosAppsScript(){
     }
   });
 }
+
+/* Releer la base de Google Sheets para confirmar lo guardado, sin bloquear al usuario ni mostrar
+   "Sincronizando": el indicador ya está en verde. Si hay cambios nuevos por enviar, se omite
+   (el siguiente envío programa su propia verificación). */
+var asVerifTimer = null;
+function confirmarEnSegundoPlano(){
+  clearTimeout(asVerifTimer);
+  asVerifTimer = setTimeout(function(){
+    if(asEnviando || hayCambiosLocalesPendientes()) return;
+    recargarDesdeGoogleSheets(false);
+  }, 1500);
+}
+
+/* Avisar si se intenta cerrar la pestaña con cambios que aún no llegaron a Google Sheets */
+window.addEventListener("beforeunload", function(e){
+  if(asEnviando || hayCambiosLocalesPendientes()){ e.preventDefault(); e.returnValue = ""; }
+});
 
 function tieneDatosOperativosLocales(){
   return !!(DB && (
@@ -2453,7 +2480,7 @@ function sincronizarAhoraManual(){
 
 function iniciarPollingRemoto(){
   clearInterval(POLL_TIMER);
-  POLL_TIMER = setInterval(verificarCambiosRemotos, 15000);
+  POLL_TIMER = setInterval(verificarCambiosRemotos, 8000);
   document.addEventListener("visibilitychange", function(){ if(!document.hidden) verificarCambiosRemotos(); });
   window.addEventListener("focus", verificarCambiosRemotos);
 }
