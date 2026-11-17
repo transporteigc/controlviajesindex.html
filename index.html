@@ -36,6 +36,18 @@ header.site{background:var(--navy);color:#fff;padding:18px 5vw 20px;}
 .user-box label{font-size:11px;color:#B9CBD3;text-transform:uppercase;letter-spacing:.04em;}
 .user-box input{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.2);color:#fff;padding:7px 10px;border-radius:7px;font-size:13px;font-family:'Inter',sans-serif;width:170px;}
 .user-box input::placeholder{color:#8EA6B0;}
+.user-box{gap:16px;}
+.sync-status{display:inline-flex;align-items:center;gap:7px;font-family:'Inter',sans-serif;font-size:12.5px;font-weight:500;color:#B9CBD3;white-space:nowrap;}
+.sync-dot{width:7px;height:7px;border-radius:50%;background:#8EA6B0;flex-shrink:0;}
+.sync-status[data-state="ok"]{color:#4CD27F;}
+.sync-status[data-state="ok"] .sync-dot{background:#4CD27F;}
+.sync-status[data-state="syncing"]{color:#E8A93A;}
+.sync-status[data-state="syncing"] .sync-dot{background:#E8A93A;animation:syncPulse 1s ease-in-out infinite;}
+.sync-status[data-state="error"]{color:#F28B82;}
+.sync-status[data-state="error"] .sync-dot{background:#F28B82;}
+@keyframes syncPulse{0%,100%{opacity:1;}50%{opacity:.25;}}
+.btn-salir{border-color:rgba(255,255,255,.3)!important;color:#fff!important;background:transparent!important;border-radius:8px;padding:6px 14px;}
+.btn-salir:hover{background:rgba(255,255,255,.1)!important;}
 
 nav.tabs{background:var(--navy-3);border-bottom:1px solid rgba(255,255,255,.08);position:sticky;top:0;z-index:10;}
 .tabs-inner{max-width:1320px;margin:0 auto;display:flex;gap:2px;padding:0 5vw;overflow-x:auto;}
@@ -64,7 +76,7 @@ main{max-width:1320px;margin:0 auto;padding:28px 5vw 80px;}
 
 label{display:block;font-size:11.5px;color:var(--slate);margin:0 0 4px;font-weight:500;}
 .field{margin-bottom:10px;}
-input[type=text],input[type=number],input[type=date],select,textarea{
+input[type=text],input[type=number],input[type=date],input[type=time],select,textarea{
   width:100%;padding:8px 10px;border:1px solid var(--line-2);border-radius:7px;
   font-family:'IBM Plex Mono',monospace;font-size:13px;color:var(--ink);background:var(--cream);
 }
@@ -167,12 +179,13 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
       <p>Producción diaria → consolidados → liquidación quincenal → aprobación · Válido para 2026 y años siguientes</p>
     </div>
     <div class="user-box">
+      <span class="sync-status" id="syncStatus" data-state="syncing" role="status" aria-live="polite" title="Conectando con Google Sheets…"><i class="sync-dot"></i><span id="syncStatusTexto">Conectando con Google Sheets…</span></span>
       <input type="hidden" id="usuarioActual" value="">
       <div id="sesionInfo" style="text-align:right;">
         <div style="font-size:12.5px;font-weight:600;color:#fff;" id="sesionNombre">—</div>
         <div style="font-size:10.5px;color:#B9CBD3;" id="sesionRol">—</div>
       </div>
-      <button class="btn sm" id="btnCerrarSesion" onclick="cerrarSesion()" style="border-color:rgba(255,255,255,.3);color:#fff;background:transparent;">Cerrar sesión</button>
+      <button class="btn sm btn-salir" id="btnCerrarSesion" onclick="cerrarSesion()">Salir</button>
     </div>
   </div>
 </header>
@@ -222,8 +235,12 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
       <div class="field"><label for="vVehiculo">Vehículo</label><select id="vVehiculo"></select></div>
       <div class="field"><label for="vRuta">Ruta</label><select id="vRuta"></select></div>
     </div>
-    <div class="grid4">
+    <div class="grid3">
+      <div class="field"><label for="vHora">Hora del viaje</label><input type="time" id="vHora"></div>
+      <div class="field"><label for="vRemision">N.º de remisión del proveedor</label><input type="text" id="vRemision" placeholder="Ej. 0012345" autocomplete="off"></div>
       <div class="field"><label for="vCantidad">Cantidad de viajes</label><input type="number" id="vCantidad" min="1" step="1" value="1"></div>
+    </div>
+    <div class="grid3">
       <div class="field"><label for="vValorUnitario">Valor unitario (de la ruta)</label><input type="number" id="vValorUnitario" disabled></div>
       <div class="field"><label for="vTotal">Total</label><input type="number" id="vTotal" disabled></div>
       <div class="field"><label for="vObs">Observación</label><input type="text" id="vObs" placeholder="Opcional"></div>
@@ -237,7 +254,7 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
     <h3>Últimos registros <span style="font-weight:400;color:var(--slate);font-size:12px;">(los 40 más recientes)</span></h3>
     <div class="btn-row"><button class="btn gold" onclick="exportarRegistro()">Exportar todos los viajes a Excel</button></div>
     <div class="table-wrap"><table class="data" id="tablaViajesRecientes">
-      <thead><tr><th>Fecha</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Viajes</th><th>Valor unit.</th><th>Total</th><th>Observación</th><th></th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Hora</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Remisión</th><th>Viajes</th><th>Valor unit.</th><th>Total</th><th>Observación</th><th></th></tr></thead>
       <tbody></tbody>
     </table></div>
   </div>
@@ -289,7 +306,7 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
   <div class="card">
     <h3>Detalle filtrado</h3>
     <div class="table-wrap"><table class="data" id="tablaDetalleFiltrado">
-      <thead><tr><th>Fecha</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Viajes</th><th>Total</th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Hora</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Remisión</th><th>Viajes</th><th>Total</th></tr></thead>
       <tbody></tbody>
     </table></div>
   </div>
@@ -901,6 +918,7 @@ var ACCESS_KEY_STORAGE = "igc_sheets_access_key_v2";
 var ACCESS_KEY_DEFAULT = "IGC-2026-TRANSPORTE-BASE";
 
 function deepClone(obj){ return JSON.parse(JSON.stringify(obj)); }
+function escHtml(t){ return String(t).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
 
 /* Google Sheets es la única base de datos. localStorage NO se usa para viajes, conductores,
    liquidaciones, préstamos, bonificaciones ni historial — solo para la URL/clave de conexión,
@@ -909,7 +927,11 @@ function loadDB(){
   DB = seedDB();
 }
 function saveDB(){
-  if(SYNC_READY) programarSincronizacionAppsScript();
+  if(SYNC_READY){
+    var b = document.getElementById("syncStatus"), l = document.getElementById("syncStatusTexto");
+    if(b && l){ b.setAttribute("data-state","syncing"); l.textContent = "Sincronizando con Google Sheets…"; }
+    programarSincronizacionAppsScript();
+  }
 }
 
 function logHistorial(entidad, registroId, campo, anterior, nuevo, motivo, quincenaKey, conductorId){
@@ -1034,12 +1056,29 @@ function guardarViaje(){
   var rutaCod = document.getElementById("vRuta").value;
   var cantidad = parseFloat(document.getElementById("vCantidad").value) || 0;
   var obs = document.getElementById("vObs").value;
+  var hora = (document.getElementById("vHora").value || "").trim();
+  var remision = (document.getElementById("vRemision").value || "").trim();
   var alertBox = document.getElementById("viajeAlert");
   alertBox.innerHTML = "";
 
   if(!fecha || !conductorId || !vehiculo || !rutaCod || cantidad<=0){
     alertBox.innerHTML = '<div class="callout danger">Completa fecha, conductor, vehículo, ruta y una cantidad de viajes mayor a cero.</div>';
     return;
+  }
+  if(!hora){
+    alertBox.innerHTML = '<div class="callout danger">Indica la hora en que se realizó el viaje.</div>';
+    return;
+  }
+  if(!remision){
+    alertBox.innerHTML = '<div class="callout danger">Escribe el número de la remisión del proveedor.</div>';
+    return;
+  }
+  var remisionNorm = remision.toLowerCase();
+  var remDup = DB.viajes.filter(function(v){ return (v.remision||"").trim().toLowerCase()===remisionNorm; })[0];
+  if(remDup){
+    var cDup = conductorById(remDup.conductorId);
+    var okRem = confirm("La remisión "+remision+" ya está registrada ("+remDup.fecha+(remDup.hora?" "+remDup.hora:"")+", "+(cDup?cDup.nombre:remDup.conductorId)+"). ¿Deseas guardarla de todas formas?");
+    if(!okRem) return;
   }
   var ruta = rutaByCodigo(rutaCod);
   if(!ruta || !ruta.valor){
@@ -1058,11 +1097,13 @@ function guardarViaje(){
   }
   var valorUnit = ruta ? ruta.valor : 0;
   var total = cantidad*valorUnit;
-  var nuevo = {id:uid(), fecha:fecha, conductorId:conductorId, vehiculo:vehiculo, rutaCodigo:rutaCod, cantidad:cantidad, valorUnitario:valorUnit, total:total, observacion:obs, createdAt: nowDateStr()+" "+nowTimeStr()};
+  var nuevo = {id:uid(), fecha:fecha, conductorId:conductorId, vehiculo:vehiculo, rutaCodigo:rutaCod, hora:hora, remision:remision, cantidad:cantidad, valorUnitario:valorUnit, total:total, observacion:obs, createdAt: nowDateStr()+" "+nowTimeStr()};
   DB.viajes.push(nuevo);
-  logHistorial("viaje", nuevo.id, "nuevo registro", "", cantidad+" viaje(s) "+ruta.nombre+" = "+fmt(total), "", quincenaDeFecha(fecha)?quincenaDeFecha(fecha).key:"", conductorId);
+  logHistorial("viaje", nuevo.id, "nuevo registro", "", cantidad+" viaje(s) "+ruta.nombre+" = "+fmt(total)+" · "+hora+" · remisión "+remision, "", quincenaDeFecha(fecha)?quincenaDeFecha(fecha).key:"", conductorId);
   saveDB();
   document.getElementById("vObs").value = "";
+  document.getElementById("vRemision").value = "";
+  document.getElementById("vHora").value = nowTimeStr();
   document.getElementById("vCantidad").value = 1;
   renderViajesRecientes();
   renderConsolidados();
@@ -1099,11 +1140,11 @@ function eliminarViaje(id){
 function renderViajesRecientes(){
   var tbody = document.querySelector("#tablaViajesRecientes tbody");
   var rows = DB.viajes.slice().sort(function(a,b){ return (b.createdAt||"").localeCompare(a.createdAt||""); }).slice(0,40);
-  if(rows.length===0){ tbody.innerHTML = '<tr class="empty-row"><td colspan="9">Aún no hay viajes registrados.</td></tr>'; return; }
+  if(rows.length===0){ tbody.innerHTML = '<tr class="empty-row"><td colspan="11">Aún no hay viajes registrados.</td></tr>'; return; }
   tbody.innerHTML = rows.map(function(v){
     var c = conductorById(v.conductorId);
     var r = rutaByCodigo(v.rutaCodigo);
-    return '<tr><td>'+v.fecha+'</td><td class="txt">'+(c?c.nombre:v.conductorId)+'</td><td>'+v.vehiculo+'</td><td class="txt">'+(r?r.nombre:v.rutaCodigo)+'</td><td>'+v.cantidad+'</td><td>'+fmt(v.valorUnitario)+'</td><td>'+fmt(v.total)+'</td><td class="txt">'+(v.observacion||"")+'</td><td><button class="btn sm danger" onclick="eliminarViaje(\''+v.id+'\')">Eliminar</button></td></tr>';
+    return '<tr><td>'+v.fecha+'</td><td>'+(v.hora||"—")+'</td><td class="txt">'+(c?c.nombre:v.conductorId)+'</td><td>'+v.vehiculo+'</td><td class="txt">'+(r?r.nombre:v.rutaCodigo)+'</td><td>'+(v.remision?escHtml(v.remision):"—")+'</td><td>'+v.cantidad+'</td><td>'+fmt(v.valorUnitario)+'</td><td>'+fmt(v.total)+'</td><td class="txt">'+(v.observacion||"")+'</td><td><button class="btn sm danger" onclick="eliminarViaje(\''+v.id+'\')">Eliminar</button></td></tr>';
   }).join("");
 }
 
@@ -1165,8 +1206,8 @@ function renderConsolidados(){
   var tdet = document.querySelector("#tablaDetalleFiltrado tbody");
   tdet.innerHTML = rows.length ? rows.slice().sort(function(a,b){return a.fecha.localeCompare(b.fecha);}).map(function(v){
     var c = conductorById(v.conductorId); var r = rutaByCodigo(v.rutaCodigo);
-    return '<tr><td>'+v.fecha+'</td><td class="txt">'+(c?c.nombre:v.conductorId)+'</td><td>'+v.vehiculo+'</td><td class="txt">'+(r?r.nombre:v.rutaCodigo)+'</td><td>'+v.cantidad+'</td><td>'+fmt(v.total)+'</td></tr>';
-  }).join("") : '<tr class="empty-row"><td colspan="6">Sin datos para este filtro.</td></tr>';
+    return '<tr><td>'+v.fecha+'</td><td>'+(v.hora||"—")+'</td><td class="txt">'+(c?c.nombre:v.conductorId)+'</td><td>'+v.vehiculo+'</td><td class="txt">'+(r?r.nombre:v.rutaCodigo)+'</td><td>'+(v.remision?escHtml(v.remision):"—")+'</td><td>'+v.cantidad+'</td><td>'+fmt(v.total)+'</td></tr>';
+  }).join("") : '<tr class="empty-row"><td colspan="8">Sin datos para este filtro.</td></tr>';
 }
 
 function guardarPrestamo(){
@@ -1903,7 +1944,7 @@ function libroDesde(hojas){
 function viajesAFilas(lista){
   return lista.map(function(v){
     var c=conductorById(v.conductorId); var r=rutaByCodigo(v.rutaCodigo);
-    return {Fecha:v.fecha, Conductor:c?c.nombre:v.conductorId, Vehiculo:v.vehiculo, Ruta:r?r.nombre:v.rutaCodigo, Viajes:v.cantidad, "Valor unitario":v.valorUnitario, Total:v.total, Observacion:v.observacion||""};
+    return {Fecha:v.fecha, Hora:v.hora||"", Conductor:c?c.nombre:v.conductorId, Vehiculo:v.vehiculo, Ruta:r?r.nombre:v.rutaCodigo, "Remision proveedor":v.remision||"", Viajes:v.cantidad, "Valor unitario":v.valorUnitario, Total:v.total, Observacion:v.observacion||""};
   });
 }
 function exportarRegistro(){
@@ -2417,7 +2458,27 @@ function iniciarPollingRemoto(){
   window.addEventListener("focus", verificarCambiosRemotos);
 }
 
+var SYNC_ULTIMA_HORA = "";
+function actualizarIndicadorSync(texto, tipo){
+  var box = document.getElementById("syncStatus");
+  var lbl = document.getElementById("syncStatusTexto");
+  if(!box || !lbl) return;
+  var estado, etiqueta;
+  if(tipo === "warn"){
+    estado = "error"; etiqueta = "Sin sincronizar con Google Sheets";
+  } else if(tipo === "ok" && /^conectado/i.test(texto || "")){
+    estado = "ok"; etiqueta = "Sincronizado con Google Sheets";
+    SYNC_ULTIMA_HORA = nowTimeStr();
+  } else {
+    estado = "syncing"; etiqueta = "Sincronizando con Google Sheets…";
+  }
+  box.setAttribute("data-state", estado);
+  lbl.textContent = etiqueta;
+  box.title = (texto ? texto.charAt(0).toUpperCase()+texto.slice(1) : etiqueta) + (SYNC_ULTIMA_HORA ? " · Última sincronización: "+SYNC_ULTIMA_HORA : "");
+}
+
 function actualizarEstadoAppsScript(texto, tipo){
+  actualizarIndicadorSync(texto, tipo);
   var el = document.getElementById("asEstado");
   if(el) el.textContent = "Estado: " + texto;
   var er = document.getElementById("sheetsEstadoRegistro");
@@ -2467,6 +2528,7 @@ function init(){
   actualizarDiagnosticoBasico();
 
   document.getElementById("vFecha").value = nowDateStr();
+  document.getElementById("vHora").value = nowTimeStr();
   document.getElementById("pFecha").value = nowDateStr();
   document.getElementById("bFecha").value = nowDateStr();
   document.getElementById("eFecha").value = nowDateStr();
