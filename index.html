@@ -235,9 +235,8 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
       <div class="field"><label for="vVehiculo">Vehículo</label><select id="vVehiculo"></select></div>
       <div class="field"><label for="vRuta">Ruta</label><select id="vRuta"></select></div>
     </div>
-    <div class="grid4">
+    <div class="grid3">
       <div class="field"><label for="vHora">Hora del viaje</label><input type="time" id="vHora"></div>
-      <div class="field"><label for="vProveedor">Proveedor (cantera)</label><select id="vProveedor"></select><div class="hint" id="vProveedorHint"></div></div>
       <div class="field"><label for="vRemision">N.º de remisión del proveedor</label><input type="text" id="vRemision" placeholder="Ej. 0012345" autocomplete="off"></div>
       <div class="field"><label for="vCantidad">Cantidad de viajes</label><input type="number" id="vCantidad" min="1" step="1" value="1"></div>
     </div>
@@ -255,7 +254,7 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
     <h3>Últimos registros <span style="font-weight:400;color:var(--slate);font-size:12px;">(los 40 más recientes)</span></h3>
     <div class="btn-row"><button class="btn gold" onclick="exportarRegistro()">Exportar todos los viajes a Excel</button></div>
     <div class="table-wrap"><table class="data" id="tablaViajesRecientes">
-      <thead><tr><th>Fecha</th><th>Hora</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Proveedor</th><th>Remisión</th><th>Viajes</th><th>Valor unit.</th><th>Total</th><th>Observación</th><th></th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Hora</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Remisión</th><th>Viajes</th><th>Valor unit.</th><th>Total</th><th>Observación</th><th></th></tr></thead>
       <tbody></tbody>
     </table></div>
   </div>
@@ -307,7 +306,7 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
   <div class="card">
     <h3>Detalle filtrado</h3>
     <div class="table-wrap"><table class="data" id="tablaDetalleFiltrado">
-      <thead><tr><th>Fecha</th><th>Hora</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Proveedor</th><th>Remisión</th><th>Viajes</th><th>Total</th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Hora</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Remisión</th><th>Viajes</th><th>Total</th></tr></thead>
       <tbody></tbody>
     </table></div>
   </div>
@@ -728,21 +727,6 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
     </div>
     <div class="btn-row"><button class="btn primary" onclick="agregarRuta()">Agregar ruta</button></div>
   </div>
-
-  <div class="card">
-    <h3>Proveedores (canteras)</h3>
-    <p class="hint" style="margin:0 0 10px;">Son los proveedores que aparecen en el registro diario de viajes, junto al número de remisión. Si desactivas uno, deja de aparecer en el formulario pero se conserva en los viajes ya registrados.</p>
-    <div class="table-wrap"><table class="data" id="tablaProveedores">
-      <thead><tr><th>Proveedor</th><th>Estado</th><th>Observaciones</th><th></th></tr></thead>
-      <tbody></tbody>
-    </table></div>
-    <h4>Agregar proveedor</h4>
-    <div class="grid3">
-      <div class="field"><label for="prNombre">Nombre del proveedor / cantera</label><input type="text" id="prNombre"></div>
-      <div class="field"><label for="prObs">Observaciones</label><input type="text" id="prObs" placeholder="Opcional (ubicación, material, etc.)"></div>
-    </div>
-    <div class="btn-row"><button class="btn primary" onclick="agregarProveedor()">Agregar proveedor</button></div>
-  </div>
 </section>
 
 <section class="panel" id="panel-notas">
@@ -918,7 +902,6 @@ function seedDB(){
       {codigo:"R14", nombre:"Grano", estado:"Activo", valor:150000, observaciones:""},
       {codigo:"R15", nombre:"Frigol", estado:"Activo", valor:150000, observaciones:""}
     ],
-    proveedores: [],
     viajes: [],
     prestamos: [],
     bonificaciones: [],
@@ -1000,24 +983,12 @@ function fillSelect(selectEl, items, valueKey, labelKey, placeholder){
 
 function conductoresActivos(){ return DB.conductores.filter(function(c){ return c.estado==="Activo"; }); }
 function vehiculosActivos(){ return DB.vehiculos.filter(function(v){ return v.estado==="Activo"; }); }
-function proveedorById(id){ for(var i=0;i<DB.proveedores.length;i++){ if(DB.proveedores[i].id===id) return DB.proveedores[i]; } return null; }
-function proveedoresActivos(){ return DB.proveedores.filter(function(x){ return x.estado==="Activo"; }); }
-function nombreProveedorViaje(v){ var pr = v.proveedorId ? proveedorById(v.proveedorId) : null; return pr ? pr.nombre : (v.proveedor||""); }
 function rutasActivas(){ return DB.rutas.filter(function(r){ return r.estado==="Activo"; }); }
 
 function fillCommonSelects(){
   fillSelect(document.getElementById("vConductor"), conductoresActivos(), "id", "nombre");
   fillSelect(document.getElementById("vVehiculo"), vehiculosActivos(), "placa", "placa");
   fillSelect(document.getElementById("vRuta"), rutasActivas(), "codigo", "nombre");
-  var selProv = document.getElementById("vProveedor");
-  if(selProv){
-    var provPrevio = selProv.value;
-    var provs = proveedoresActivos();
-    fillSelect(selProv, provs, "id", "nombre", provs.length ? "Selecciona el proveedor…" : "Sin proveedores configurados");
-    if(provPrevio && provs.some(function(x){ return x.id===provPrevio; })) selProv.value = provPrevio;
-    var hint = document.getElementById("vProveedorHint");
-    if(hint) hint.textContent = provs.length ? "" : "Agrégalos en Configuración → Proveedores.";
-  }
 
   fillSelect(document.getElementById("fConductor"), DB.conductores, "id", "nombre", "Todos los conductores");
   fillSelect(document.getElementById("fRuta"), DB.rutas, "codigo", "nombre", "Todas las rutas");
@@ -1086,9 +1057,6 @@ function guardarViaje(){
   var cantidad = parseFloat(document.getElementById("vCantidad").value) || 0;
   var obs = document.getElementById("vObs").value;
   var hora = (document.getElementById("vHora").value || "").trim();
-  var proveedorId = document.getElementById("vProveedor").value;
-  var provObj = proveedorId ? proveedorById(proveedorId) : null;
-  var proveedor = provObj ? provObj.nombre : "";
   var remision = (document.getElementById("vRemision").value || "").trim();
   var alertBox = document.getElementById("viajeAlert");
   alertBox.innerHTML = "";
@@ -1101,19 +1069,15 @@ function guardarViaje(){
     alertBox.innerHTML = '<div class="callout danger">Indica la hora en que se realizó el viaje.</div>';
     return;
   }
-  if(!proveedor){
-    alertBox.innerHTML = '<div class="callout danger">Selecciona el proveedor (cantera) de la remisión. Si no aparece, agrégalo en Configuración → Proveedores.</div>';
-    return;
-  }
   if(!remision){
     alertBox.innerHTML = '<div class="callout danger">Escribe el número de la remisión del proveedor.</div>';
     return;
   }
   var remisionNorm = remision.toLowerCase();
-  var remDup = DB.viajes.filter(function(v){ return (v.remision||"").trim().toLowerCase()===remisionNorm && (v.proveedor||"").trim().toLowerCase()===proveedor.toLowerCase(); })[0];
+  var remDup = DB.viajes.filter(function(v){ return (v.remision||"").trim().toLowerCase()===remisionNorm; })[0];
   if(remDup){
     var cDup = conductorById(remDup.conductorId);
-    var okRem = confirm("La remisión "+remision+" del proveedor "+proveedor+" ya está registrada ("+remDup.fecha+(remDup.hora?" "+remDup.hora:"")+", "+(cDup?cDup.nombre:remDup.conductorId)+"). ¿Deseas guardarla de todas formas?");
+    var okRem = confirm("La remisión "+remision+" ya está registrada ("+remDup.fecha+(remDup.hora?" "+remDup.hora:"")+", "+(cDup?cDup.nombre:remDup.conductorId)+"). ¿Deseas guardarla de todas formas?");
     if(!okRem) return;
   }
   var ruta = rutaByCodigo(rutaCod);
@@ -1133,9 +1097,9 @@ function guardarViaje(){
   }
   var valorUnit = ruta ? ruta.valor : 0;
   var total = cantidad*valorUnit;
-  var nuevo = {id:uid(), fecha:fecha, conductorId:conductorId, vehiculo:vehiculo, rutaCodigo:rutaCod, hora:hora, proveedorId:proveedorId, proveedor:proveedor, remision:remision, cantidad:cantidad, valorUnitario:valorUnit, total:total, observacion:obs, createdAt: nowDateStr()+" "+nowTimeStr()};
+  var nuevo = {id:uid(), fecha:fecha, conductorId:conductorId, vehiculo:vehiculo, rutaCodigo:rutaCod, hora:hora, remision:remision, cantidad:cantidad, valorUnitario:valorUnit, total:total, observacion:obs, createdAt: nowDateStr()+" "+nowTimeStr()};
   DB.viajes.push(nuevo);
-  logHistorial("viaje", nuevo.id, "nuevo registro", "", cantidad+" viaje(s) "+ruta.nombre+" = "+fmt(total)+" · "+hora+" · "+proveedor+" · remisión "+remision, "", quincenaDeFecha(fecha)?quincenaDeFecha(fecha).key:"", conductorId);
+  logHistorial("viaje", nuevo.id, "nuevo registro", "", cantidad+" viaje(s) "+ruta.nombre+" = "+fmt(total)+" · "+hora+" · remisión "+remision, "", quincenaDeFecha(fecha)?quincenaDeFecha(fecha).key:"", conductorId);
   saveDB();
   document.getElementById("vObs").value = "";
   document.getElementById("vRemision").value = "";
@@ -1176,11 +1140,11 @@ function eliminarViaje(id){
 function renderViajesRecientes(){
   var tbody = document.querySelector("#tablaViajesRecientes tbody");
   var rows = DB.viajes.slice().sort(function(a,b){ return (b.createdAt||"").localeCompare(a.createdAt||""); }).slice(0,40);
-  if(rows.length===0){ tbody.innerHTML = '<tr class="empty-row"><td colspan="12">Aún no hay viajes registrados.</td></tr>'; return; }
+  if(rows.length===0){ tbody.innerHTML = '<tr class="empty-row"><td colspan="11">Aún no hay viajes registrados.</td></tr>'; return; }
   tbody.innerHTML = rows.map(function(v){
     var c = conductorById(v.conductorId);
     var r = rutaByCodigo(v.rutaCodigo);
-    return '<tr><td>'+v.fecha+'</td><td>'+(v.hora||"—")+'</td><td class="txt">'+(c?c.nombre:v.conductorId)+'</td><td>'+v.vehiculo+'</td><td class="txt">'+(r?r.nombre:v.rutaCodigo)+'</td><td class="txt">'+(nombreProveedorViaje(v)?escHtml(nombreProveedorViaje(v)):"—")+'</td><td>'+(v.remision?escHtml(v.remision):"—")+'</td><td>'+v.cantidad+'</td><td>'+fmt(v.valorUnitario)+'</td><td>'+fmt(v.total)+'</td><td class="txt">'+(v.observacion||"")+'</td><td><button class="btn sm danger" onclick="eliminarViaje(\''+v.id+'\')">Eliminar</button></td></tr>';
+    return '<tr><td>'+v.fecha+'</td><td>'+(v.hora||"—")+'</td><td class="txt">'+(c?c.nombre:v.conductorId)+'</td><td>'+v.vehiculo+'</td><td class="txt">'+(r?r.nombre:v.rutaCodigo)+'</td><td>'+(v.remision?escHtml(v.remision):"—")+'</td><td>'+v.cantidad+'</td><td>'+fmt(v.valorUnitario)+'</td><td>'+fmt(v.total)+'</td><td class="txt">'+(v.observacion||"")+'</td><td><button class="btn sm danger" onclick="eliminarViaje(\''+v.id+'\')">Eliminar</button></td></tr>';
   }).join("");
 }
 
@@ -1242,8 +1206,8 @@ function renderConsolidados(){
   var tdet = document.querySelector("#tablaDetalleFiltrado tbody");
   tdet.innerHTML = rows.length ? rows.slice().sort(function(a,b){return a.fecha.localeCompare(b.fecha);}).map(function(v){
     var c = conductorById(v.conductorId); var r = rutaByCodigo(v.rutaCodigo);
-    return '<tr><td>'+v.fecha+'</td><td>'+(v.hora||"—")+'</td><td class="txt">'+(c?c.nombre:v.conductorId)+'</td><td>'+v.vehiculo+'</td><td class="txt">'+(r?r.nombre:v.rutaCodigo)+'</td><td class="txt">'+(nombreProveedorViaje(v)?escHtml(nombreProveedorViaje(v)):"—")+'</td><td>'+(v.remision?escHtml(v.remision):"—")+'</td><td>'+v.cantidad+'</td><td>'+fmt(v.total)+'</td></tr>';
-  }).join("") : '<tr class="empty-row"><td colspan="9">Sin datos para este filtro.</td></tr>';
+    return '<tr><td>'+v.fecha+'</td><td>'+(v.hora||"—")+'</td><td class="txt">'+(c?c.nombre:v.conductorId)+'</td><td>'+v.vehiculo+'</td><td class="txt">'+(r?r.nombre:v.rutaCodigo)+'</td><td>'+(v.remision?escHtml(v.remision):"—")+'</td><td>'+v.cantidad+'</td><td>'+fmt(v.total)+'</td></tr>';
+  }).join("") : '<tr class="empty-row"><td colspan="8">Sin datos para este filtro.</td></tr>';
 }
 
 function guardarPrestamo(){
@@ -1889,35 +1853,6 @@ function agregarRuta(){
   saveDB(); fillCommonSelects(); renderConfig();
   document.getElementById("rNombre").value=""; document.getElementById("rValor").value=""; document.getElementById("rObs").value="";
 }
-function agregarProveedor(){
-  var nombre = document.getElementById("prNombre").value.trim().replace(/\s+/g," ");
-  if(!nombre){ alert("Escribe el nombre del proveedor."); return; }
-  if(DB.proveedores.some(function(x){ return x.nombre.trim().toLowerCase()===nombre.toLowerCase(); })){ alert("Ya existe un proveedor con ese nombre."); return; }
-  var nuevo = {id:uid(), nombre:nombre, estado:"Activo", observaciones:document.getElementById("prObs").value.trim()};
-  DB.proveedores.push(nuevo);
-  logHistorial("proveedor", nuevo.id, "nuevo proveedor", "", nombre, "", "", "");
-  saveDB(); fillCommonSelects(); renderConfig();
-  document.getElementById("prNombre").value=""; document.getElementById("prObs").value="";
-}
-function toggleProveedor(id){
-  var x = proveedorById(id); if(!x) return;
-  var anterior = x.estado;
-  x.estado = x.estado==="Activo" ? "Inactivo" : "Activo";
-  logHistorial("proveedor", id, "estado", anterior, x.estado, "", "", "");
-  saveDB(); fillCommonSelects(); renderConfig();
-}
-function editarNombreProveedor(id){
-  var x = proveedorById(id); if(!x) return;
-  var nuevo = prompt("Nuevo nombre para el proveedor:", x.nombre);
-  if(nuevo===null) return;
-  nuevo = nuevo.trim().replace(/\s+/g," ");
-  if(!nuevo){ alert("El nombre no puede quedar vacío."); return; }
-  if(DB.proveedores.some(function(o){ return o.id!==id && o.nombre.trim().toLowerCase()===nuevo.toLowerCase(); })){ alert("Ya existe un proveedor con ese nombre."); return; }
-  var anterior = x.nombre;
-  x.nombre = nuevo;
-  logHistorial("proveedor", id, "nombre de proveedor", anterior, nuevo, "", "", "");
-  saveDB(); fillCommonSelects(); renderConfig(); renderViajesRecientes();
-}
 function toggleRuta(codigo){
   var r = rutaByCodigo(codigo);
   var anterior = r.estado;
@@ -1987,12 +1922,6 @@ function renderConfig(){
     return '<tr><td>'+v.placa+'</td><td class="txt">'+v.marca+' '+v.modelo+'</td><td><span class="pill '+(v.estado==="Activo"?"activo":"inactivo")+'">'+v.estado+'</span></td><td class="txt">'+(v.conductorHabitual||"—")+'</td><td class="txt">'+(v.observaciones||"")+'</td><td><button class="btn sm" onclick="toggleVehiculo(\''+v.placa+'\')">'+(v.estado==="Activo"?"Desactivar":"Activar")+'</button></td></tr>';
   }).join("");
 
-  var tp = document.querySelector("#tablaProveedores tbody");
-  if(tp){
-    tp.innerHTML = DB.proveedores.length ? DB.proveedores.map(function(x){
-      return '<tr><td class="txt">'+escHtml(x.nombre)+'</td><td><span class="pill '+(x.estado==="Activo"?"activo":"inactivo")+'">'+x.estado+'</span></td><td class="txt">'+escHtml(x.observaciones||"")+'</td><td><button class="btn sm" onclick="editarNombreProveedor(\''+x.id+'\')">Editar nombre</button> <button class="btn sm" onclick="toggleProveedor(\''+x.id+'\')">'+(x.estado==="Activo"?"Desactivar":"Activar")+'</button></td></tr>';
-    }).join("") : '<tr class="empty-row"><td colspan="4">Aún no hay proveedores. Agrega el primero abajo.</td></tr>';
-  }
   var tr = document.querySelector("#tablaRutas tbody");
   tr.innerHTML = DB.rutas.map(function(r){
     return '<tr><td class="txt">'+r.nombre+'</td><td><span class="pill '+(r.estado==="Activo"?"activo":"inactivo")+'">'+r.estado+'</span></td><td>'+fmt(r.valor)+'</td><td class="txt">'+(r.observaciones||"")+'</td><td><button class="btn sm" onclick="editarNombreRuta(\''+r.codigo+'\')">Editar nombre</button> <button class="btn sm" onclick="editarValorRuta(\''+r.codigo+'\')">Editar valor</button> <button class="btn sm" onclick="toggleRuta(\''+r.codigo+'\')">'+(r.estado==="Activo"?"Desactivar":"Activar")+'</button></td></tr>';
@@ -2015,7 +1944,7 @@ function libroDesde(hojas){
 function viajesAFilas(lista){
   return lista.map(function(v){
     var c=conductorById(v.conductorId); var r=rutaByCodigo(v.rutaCodigo);
-    return {Fecha:v.fecha, Hora:v.hora||"", Conductor:c?c.nombre:v.conductorId, Vehiculo:v.vehiculo, Ruta:r?r.nombre:v.rutaCodigo, Proveedor:nombreProveedorViaje(v), "Remision proveedor":v.remision||"", Viajes:v.cantidad, "Valor unitario":v.valorUnitario, Total:v.total, Observacion:v.observacion||""};
+    return {Fecha:v.fecha, Hora:v.hora||"", Conductor:c?c.nombre:v.conductorId, Vehiculo:v.vehiculo, Ruta:r?r.nombre:v.rutaCodigo, "Remision proveedor":v.remision||"", Viajes:v.cantidad, "Valor unitario":v.valorUnitario, Total:v.total, Observacion:v.observacion||""};
   });
 }
 function exportarRegistro(){
@@ -2089,7 +2018,7 @@ function exportarTodo(){
   var fl = DB.liquidaciones.map(function(l){ var c=conductorById(l.conductorId); var q=getQuincena(l.quincenaKey); return {Quincena:q?q.label:l.quincenaKey, Conductor:c?c.nombre:l.conductorId, "Total producido":l.totalProducido, "Neto a pagar":l.neto, Estado:l.estado, "Aprobado por":l.aprobadoPor||""}; });
   var fh = DB.historial.slice().reverse().map(function(h){ return {Fecha:h.fecha, Hora:h.hora, Usuario:h.usuario, Entidad:h.entidad, Campo:h.campo, "Valor anterior":h.valorAnterior, "Valor nuevo":h.valorNuevo, Motivo:h.motivo||""}; });
   var wb = libroDesde([
-    hojaDesde("Conductores", fc), hojaDesde("Vehiculos", fv), hojaDesde("Rutas", fr), hojaDesde("Proveedores", DB.proveedores.map(function(x){ return {Proveedor:x.nombre, Estado:x.estado, Observaciones:x.observaciones||""}; })),
+    hojaDesde("Conductores", fc), hojaDesde("Vehiculos", fv), hojaDesde("Rutas", fr),
     hojaDesde("Viajes", viajesAFilas(DB.viajes)), hojaDesde("Prestamos", fp), hojaDesde("Bonificaciones", fb),
     hojaDesde("Liquidaciones", fl), hojaDesde("Historial", fh)
   ]);
@@ -2102,7 +2031,7 @@ var asEnviando = false;
 var asPendienteMientrasEnviaba = false;
 var POLL_TIMER = null;
 var COLLECTION_KEYS = {
-  conductores:"id", vehiculos:"placa", rutas:"codigo", proveedores:"id", viajes:"id",
+  conductores:"id", vehiculos:"placa", rutas:"codigo", viajes:"id",
   prestamos:"id", bonificaciones:"id", liquidaciones:"id", historial:"id"
 };
 
