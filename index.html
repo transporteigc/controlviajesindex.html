@@ -2647,6 +2647,13 @@ function concCargarArchivo(input){
   rd.readAsArrayBuffer(f);
 }
 
+function concPesoFlete(m){
+  var peso = 0, fl = [];
+  m.forEach(function(y){ var n = Number(y.peso); if(!isNaN(n)) peso += n; var f = Number(y.flete); if(!isNaN(f) && f!=="" && fl.indexOf(Math.round(f))<0) fl.push(Math.round(f)); });
+  return {peso: Math.round(peso*100)/100, flete: fl};
+}
+function concFmtPeso(n){ return n.toLocaleString("es-CO",{minimumFractionDigits:2, maximumFractionDigits:2}); }
+
 function concCalcular(){
   var desde = (document.getElementById("concDesde")||{}).value || "", hasta = (document.getElementById("concHasta")||{}).value || "";
   var cuenta = {}, claves = {};
@@ -2701,14 +2708,15 @@ function renderConciliacion(){
              : '<span class="pill revision">Sin remisión</span>';
     if(x.repetida) pill += ' <span class="pill revision" title="Esta remisión está registrada más de una vez en la plataforma">Remisión repetida</span>';
     var flete = x.m.reduce(function(a,y){ return a+y.importe; },0);
-    return '<tr><td>'+v.fecha+'</td><td class="txt">'+escHtml(c?c.nombre:v.conductorId)+'</td><td>'+escHtml(v.vehiculo||"")+'</td><td class="txt">'+escHtml(r?r.nombre:v.rutaCodigo)+'</td><td>'+(v.remision?escHtml(v.remision):"—")+'</td><td><b>'+(x.batch?escHtml(x.batch):"—")+'</b></td><td>'+(x.m.length?fmt(flete):"—")+'</td><td class="txt">'+pill+'</td></tr>';
+    var pf = concPesoFlete(x.m);
+    return '<tr><td>'+v.fecha+'</td><td class="txt">'+escHtml(c?c.nombre:v.conductorId)+'</td><td>'+escHtml(v.vehiculo||"")+'</td><td class="txt">'+escHtml(r?r.nombre:v.rutaCodigo)+'</td><td>'+(v.remision?escHtml(v.remision):"—")+'</td><td><b>'+(x.batch?escHtml(x.batch):"—")+'</b></td><td>'+(x.m.length?concFmtPeso(pf.peso):"—")+'</td><td>'+(pf.flete.length?pf.flete.map(fmt).join(" / "):"—")+'</td><td>'+(x.m.length?fmt(flete):"—")+'</td><td class="txt">'+pill+'</td></tr>';
   }).join("");
-  if(!filasHtml) filasHtml = '<tr><td colspan="8" class="txt" style="text-align:center;color:var(--slate);padding:18px;">Sin viajes con este filtro.</td></tr>';
+  if(!filasHtml) filasHtml = '<tr><td colspan="10" class="txt" style="text-align:center;color:var(--slate);padding:18px;">Sin viajes con este filtro.</td></tr>';
 
   var huerfanas = res.sinViaje.map(function(x){
-    return '<tr><td><b>'+escHtml(x.batch)+'</b></td><td>'+escHtml(x.rem)+'</td><td>'+(x.fecha||"—")+'</td><td class="txt">'+escHtml(x.origen)+'</td><td class="txt">'+escHtml(x.destino)+'</td><td>'+escHtml(x.peso)+'</td><td>'+fmt(x.importe)+'</td></tr>';
+    return '<tr><td><b>'+escHtml(x.batch)+'</b></td><td>'+escHtml(x.rem)+'</td><td>'+(x.fecha||"—")+'</td><td class="txt">'+escHtml(x.origen)+'</td><td class="txt">'+escHtml(x.destino)+'</td><td>'+(isNaN(Number(x.peso))||x.peso===""?escHtml(x.peso):concFmtPeso(Number(x.peso)))+'</td><td>'+(x.flete===""?"—":fmt(Number(x.flete)))+'</td><td>'+fmt(x.importe)+'</td></tr>';
   }).join("");
-  if(!huerfanas) huerfanas = '<tr><td colspan="7" class="txt" style="text-align:center;color:var(--slate);padding:18px;">Todas las remisiones del Batch existen en la plataforma.</td></tr>';
+  if(!huerfanas) huerfanas = '<tr><td colspan="8" class="txt" style="text-align:center;color:var(--slate);padding:18px;">Todas las remisiones del Batch existen en la plataforma.</td></tr>';
 
   met.innerHTML =
     '<div class="grid4" style="margin-bottom:18px;">' +
@@ -2717,11 +2725,11 @@ function renderConciliacion(){
       '<div class="metric"><p class="m-label">✖ Sin batch</p><div class="m-value">'+sin+(sr?' · '+sr+' sin remisión':'')+'</div></div>' +
       '<div class="metric alt"><p class="m-label">Batch sin viaje en plataforma</p><div class="m-value">'+res.sinViaje.length+'</div></div>' +
     '</div>';
-  tv.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr><th>Fecha</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Remisión</th><th>Batch para facturar</th><th>Importe batch</th><th>Check</th></tr></thead><tbody>'+filasHtml+'</tbody></table></div>' +
+  tv.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr><th>Fecha</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Remisión</th><th>Batch para facturar</th><th>Peso neto</th><th>Flete</th><th>Importe batch</th><th>Check</th></tr></thead><tbody>'+filasHtml+'</tbody></table></div>' +
       (recorte?'<div class="hint">Se muestran los primeros '+MAX+' de '+lista.length+' viajes; el Excel exportado trae todos.</div>':'');
   hu.innerHTML = '<div class="card"><h3>3. Remisiones del Batch que no están registradas en la plataforma</h3>' +
       '<div class="hint" style="margin:0 0 10px;">Importe de estas remisiones: <b>'+fmt(impSinViaje)+'</b> de '+fmt(impTotal)+' en todo el archivo. Revisa si falta registrar el viaje o si la remisión se digitó diferente.</div>' +
-      '<div class="table-wrap"><table class="data"><thead><tr><th>Batch</th><th>Remisión</th><th>Fecha Batch</th><th>Origen</th><th>Destino</th><th>Peso neto</th><th>Importe</th></tr></thead><tbody>'+huerfanas+'</tbody></table></div></div>';
+      '<div class="table-wrap"><table class="data"><thead><tr><th>Batch</th><th>Remisión</th><th>Fecha Batch</th><th>Origen</th><th>Destino</th><th>Peso neto</th><th>Flete</th><th>Importe</th></tr></thead><tbody>'+huerfanas+'</tbody></table></div></div>';
 }
 
 function exportarConciliacion(){
@@ -2730,9 +2738,9 @@ function exportarConciliacion(){
   var estados = {con:"Con batch", sin:"Sin batch", sinrem:"Sin remisión"};
   var filas = res.viajes.map(function(x){
     var v=x.v, c=conductorById(v.conductorId), r=rutaByCodigo(v.rutaCodigo);
-    return {Fecha:v.fecha, Conductor:c?c.nombre:v.conductorId, Vehiculo:v.vehiculo||"", Ruta:r?r.nombre:v.rutaCodigo, "Remision proveedor":v.remision||"", "Batch para facturar":x.batch, "Importe batch":x.m.reduce(function(a,y){return a+y.importe;},0), Check:estados[x.estado]+(x.repetida?" (remisión repetida)":"")};
+    return {Fecha:v.fecha, Conductor:c?c.nombre:v.conductorId, Vehiculo:v.vehiculo||"", Ruta:r?r.nombre:v.rutaCodigo, "Remision proveedor":v.remision||"", "Batch para facturar":x.batch, "Peso neto":concPesoFlete(x.m).peso, Flete:concPesoFlete(x.m).flete.join(" / "), "Importe batch":x.m.reduce(function(a,y){return a+y.importe;},0), Check:estados[x.estado]+(x.repetida?" (remisión repetida)":"")};
   });
-  var huerf = res.sinViaje.map(function(x){ return {Batch:x.batch, "Remision proveedor":x.rem, "Fecha Batch":x.fecha, Origen:x.origen, Destino:x.destino, "Peso neto":x.peso, Importe:x.importe}; });
+  var huerf = res.sinViaje.map(function(x){ return {Batch:x.batch, "Remision proveedor":x.rem, "Fecha Batch":x.fecha, Origen:x.origen, Destino:x.destino, "Peso neto":x.peso, Flete:x.flete, Importe:x.importe}; });
   var resumen = [
     {Concepto:"Archivo del cliente", Valor:CONC.archivo},
     {Concepto:"Viajes en la plataforma (periodo filtrado)", Valor:res.viajes.length},
