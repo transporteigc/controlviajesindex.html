@@ -232,6 +232,7 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
     <button class="tab-btn active" data-tab="registro"><span class="tab-ico" aria-hidden="true">📝</span>Registro diario</button>
     <button class="tab-btn" data-tab="consolidados"><span class="tab-ico" aria-hidden="true">📊</span>Consolidados</button>
     <button class="tab-btn" data-tab="conciliacion"><span class="tab-ico" aria-hidden="true">🔄</span>Conciliación Batch</button>
+    <button class="tab-btn" data-tab="facturacion"><span class="tab-ico" aria-hidden="true">🧾</span>Facturación por corte</button>
     <button class="tab-btn" data-tab="prestamos"><span class="tab-ico" aria-hidden="true">💰</span>Préstamos y bonificaciones</button>
     <button class="tab-btn" data-tab="liquidacion"><span class="tab-ico" aria-hidden="true">🧮</span>Liquidación quincenal</button>
     <button class="tab-btn" data-tab="aprobaciones"><span class="tab-ico" aria-hidden="true">✅</span>Aprobaciones</button>
@@ -380,6 +381,68 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
     <div id="concTablaViajes"></div>
   </div>
   <div id="concHuerfanas"></div>
+</section>
+
+<section class="panel" id="panel-facturacion">
+  <div class="section-lead"><div class="lead-text">
+    <p class="eyebrow">Control con el cliente</p>
+    <h2>Facturación por corte de Batch</h2>
+    <p>El cliente envía el Batch por <b>cortes</b> que no siempre coinciden con la quincena (unos días de una quincena y otros de la siguiente). Un <b>corte</b> es la ventana de fechas que cubre cada Batch. Aquí calculas cuánto facturar por <b>corte</b>: <b>peso cargado (tomado del Batch) × tu flete por ruta</b>, comparado con el <b>importe del Batch</b>. Los fletes al cliente son independientes de las tarifas de los conductores y puedes modificarlos por corte. Abajo concilias cada corte con las quincenas de liquidación de los conductores.</p>
+    <ol class="pasos"><li>Carga y guarda el Batch en «Conciliación Batch».</li><li>Elige el corte (un Batch guardado, un rango de fechas o todos) y ajusta los fletes.</li><li>Confirma la ruta de cada origen–destino y revisa la diferencia. Abajo ves cómo se reparte el corte entre quincenas.</li></ol>
+  </div></div>
+
+  <div class="card">
+    <div class="grid3">
+      <div class="field"><label for="facPeriodo">Corte a facturar</label><select id="facPeriodo" onchange="renderFacturacion()"></select></div>
+      <div class="field"><label for="facUnidad">Unidad del peso en el Batch</label><select id="facUnidad" onchange="renderFacturacion()"><option value="ton">Toneladas (flete por tonelada)</option><option value="kg">Kilogramos (se divide entre 1.000)</option></select></div>
+      <div class="btn-row" style="align-self:end;margin:0 0 10px;"><button class="btn gold" onclick="facExportar()">Exportar a Excel</button></div>
+    </div>
+    <div class="grid3" id="facRangoBox" style="display:none;margin-top:8px;">
+      <div class="field"><label for="facDesde">Desde (fecha)</label><input type="date" id="facDesde" onchange="renderFacturacion()"></div>
+      <div class="field"><label for="facHasta">Hasta (fecha)</label><input type="date" id="facHasta" onchange="renderFacturacion()"></div>
+    </div>
+    <div class="hint">El peso sale de los Batch guardados (y del archivo cargado que aún no se guarda) en «Conciliación Batch». «Un Batch guardado» toma todas sus remisiones; «Rango de fechas» toma las remisiones de todos los Batch cuya fecha caiga en el rango.</div>
+  </div>
+
+  <div id="facMetricas"></div>
+
+  <div class="card">
+    <h3>1. Fletes al cliente por ruta</h3>
+    <p class="hint">«Flete base» aplica a todos los cortes. Si el flete cambia solo en el corte elegido, escríbelo en «Flete de este corte» (queda guardado solo para ese corte y no altera los anteriores). Déjalo vacío para usar el base.</p>
+    <div class="table-wrap"><table class="data" id="tablaFacTarifas">
+      <thead><tr><th>Ruta (origen - destino / material)</th><th>Flete base</th><th>Flete de este corte</th><th>Flete aplicado</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+    <h4>Agregar ruta / importar fletes</h4>
+    <div class="grid4">
+      <div class="field"><label for="facNuevaRuta">Nombre de la ruta</label><input type="text" id="facNuevaRuta"></div>
+      <div class="field"><label for="facNuevoFlete">Flete</label><input type="number" id="facNuevoFlete" step="100"></div>
+      <div class="field"><label for="facImportar">Importar Excel de fletes (columnas Ruta y FLETE)</label><input type="file" id="facImportar" accept=".xlsx,.xls,.csv" onchange="facImportarExcel(this)"></div>
+    </div>
+    <div class="btn-row"><button class="btn primary" onclick="facAgregarTarifa()">Agregar ruta</button></div>
+    <div id="facMensaje"></div>
+  </div>
+
+  <div class="card">
+    <h3>2. Ruta de flete asignada a cada origen–destino del Batch</h3>
+    <p class="hint">El sistema sugiere la ruta por parecido de nombres. Revisa la asignación y corrígela si hace falta: queda guardada para los próximos cortes.</p>
+    <div id="facMapeo"></div>
+  </div>
+
+  <div class="card">
+    <h3>3. Conciliación del corte con las quincenas de liquidación</h3>
+    <div id="facPorQuincena"></div>
+  </div>
+
+  <div class="card">
+    <h3>4. Facturación por ruta</h3>
+    <div id="facResumenRuta"></div>
+  </div>
+
+  <div class="card">
+    <h3>5. Detalle por remisión</h3>
+    <div id="facDetalle"></div>
+  </div>
 </section>
 
 <section class="panel" id="panel-prestamos">
@@ -986,7 +1049,10 @@ function seedDB(){
     liquidaciones: [],
     historial: [],
     batchLotes: [],
-    batchFilas: []
+    batchFilas: [],
+    fletesCliente: [],
+    fletesQuincena: [],
+    fletesMapeo: []
   };
 }
 
@@ -2123,7 +2189,8 @@ var POLL_TIMER = null;
 var COLLECTION_KEYS = {
   conductores:"id", vehiculos:"placa", rutas:"codigo", viajes:"id",
   prestamos:"id", bonificaciones:"id", liquidaciones:"id", historial:"id",
-  batchLotes:"id", batchFilas:"id"
+  batchLotes:"id", batchFilas:"id",
+  fletesCliente:"id", fletesQuincena:"id", fletesMapeo:"id"
 };
 
 function getAccessKey(){ return (localStorage.getItem(ACCESS_KEY_STORAGE) || ACCESS_KEY_DEFAULT || "").trim(); }
@@ -2349,6 +2416,7 @@ function renderTodo(){
   renderAnualDashboard();
   renderConfig();
   renderConciliacion();
+  renderFacturacion();
 }
 
 function normalizarDBRemota(datos){
@@ -2598,6 +2666,7 @@ function actualizarEstadoAppsScript(texto, tipo){
 var TAB_REFRESH = {
   consolidados: renderConsolidados,
   conciliacion: renderConciliacion,
+  facturacion: renderFacturacion,
   prestamos: function(){ renderPrestamos(); renderBonificaciones(); renderBeneficiosEventuales(); },
   aprobaciones: renderAprobaciones,
   historial: renderHistorial,
@@ -2996,6 +3065,321 @@ function exportarConciliacion(){
   ];
   var hist = (DB.batchLotes||[]).slice().sort(function(a,b){ return a.desde.localeCompare(b.desde); }).map(function(l){ return {Archivo:l.archivo, "Periodo desde":l.desde, "Periodo hasta":l.hasta, "Fecha de carga":l.fechaCarga, Usuario:l.usuario||"", Remisiones:l.nFilas, "Importe":l.importe||0}; });
   descargarLibro(libroDesde([hojaDesde("Resumen",resumen), hojaDesde("Viajes vs Batch",filas), hojaDesde("Batch sin viaje",huerf), hojaDesde("Historial batch",hist)]), "conciliacion-batch-"+nowDateStr()+".xlsx");
+}
+
+/* ===== Facturación por corte al cliente (cada corte = ventana de fechas de un Batch) =====
+   Facturación = peso cargado (del Batch) × flete al cliente por ruta. Los fletes al cliente son distintos de
+   las tarifas que se pagan a los conductores. Se guardan en Google Sheets en tres colecciones:
+   fletesCliente (flete base por ruta), fletesQuincena (cambio de flete solo en un corte; nombre interno por compatibilidad con lo ya guardado) y
+   fletesMapeo (qué ruta de flete corresponde a cada origen–destino del Batch). */
+var FAC_SEED = [
+  ["Cantera Los pioneros - Planta Argos Santa Marta / Grava",14000],
+  ["Cantera G.M.  Santo Tomás - PlantaArgo Santa Marta / Arena",40000],
+  ["Cantera Ciprecon - Panta NorteArg Barranquilla / Grava",30000],
+  ["Cantera Ciprecon - Planta Argos Gaira Santa Marta / Grava",11600],
+  ["Puerto Santa Marta - Bodegas El Retiro / Maíz amarillo",8300],
+  ["Puerto Santa Marta - El Manantial / Fetilizante",20000],
+  ["Puerto Santa Marta - Molinos Santa Marta / Maíz Amarillo",14000],
+  ["Puerto Santa Marta - Parque Industrial Puerto del Sol / Maíz Amarillo",8300],
+  ["Cantera Andiminerals - Planta Argos Gaira Santa Marta / Arena",11600],
+  ["Zona externa 1 Santa Marta - Zona Franca Palermo / Frijol Soya",58000],
+  ["Puerto Santa Marta - Zona Franca Tayrona / Fertilizante",16500],
+  ["OPL 1 - Puerto Santa Marta / Carbón",9400],
+  ["Compás Barranquilla - Puerto Santa Marta / Carbón",62000],
+  ["Puerto Santa Marta - Puerto del Sol Parque Industrial / Trigo",8300],
+  ["Planta Arg Soledad - Planta Argos Gaira Santa Marta / Grava",45000],
+  ["Cantera Ciprecon - Planta Arg Soledad / Grava",30000],
+  ["Puerto Santa Marta - Bodega Patio Industrial RJ SAS / Gluten de Maiz",6500],
+  ["Bitco/ Barranquilla-Portarck Barranquilla/ maiz blanco",14500],
+  ["Cantera Ingecost - Planta Arg Soledad / Grava",21215],
+  ["OPL 3 - Puerto Santa Marta / Carbón",10000]
+];
+var FAC_COMBOS = []; /* combinaciones origen–destino del corte mostrado (para el selector de asignación) */
+var FAC_ULTIMO = null; /* último cálculo, para exportar */
+
+function facAsegurar(){
+  if(!DB.fletesCliente) DB.fletesCliente = [];
+  if(!DB.fletesQuincena) DB.fletesQuincena = [];
+  if(!DB.fletesMapeo) DB.fletesMapeo = [];
+  if(!DB.fletesCliente.length){
+    FAC_SEED.forEach(function(x,i){ DB.fletesCliente.push({id:"F"+pad2(i+1), nombre:x[0], flete:x[1]}); });
+    saveDB();
+  }
+}
+function facTarifaById(id){ for(var i=0;i<DB.fletesCliente.length;i++){ if(DB.fletesCliente[i].id===id) return DB.fletesCliente[i]; } return null; }
+function facOverride(qKey, id){ var k=qKey+"|"+id; for(var i=0;i<DB.fletesQuincena.length;i++){ if(DB.fletesQuincena[i].id===k) return DB.fletesQuincena[i]; } return null; }
+function facFleteAplicado(t, qKey){ var o = facOverride(qKey, t.id); return o ? Number(o.flete)||0 : Number(t.flete)||0; }
+function facNum(v){ var n = parseFloat(String(v).replace(",",".")); return isNaN(n)?0:n; }
+
+function facEditarBase(id, valor){
+  var t = facTarifaById(id); if(!t) return;
+  var nuevo = facNum(valor), ant = t.flete;
+  if(nuevo===Number(ant)) return;
+  t.flete = nuevo;
+  logHistorial("Flete cliente", id, "flete base", ant, nuevo, t.nombre, "", "");
+  saveDB(); renderFacturacion();
+}
+function facEditarQuincena(id, valor){
+  var P = facPeriodo(), qKey = P && P.key, t = facTarifaById(id); if(!t || !qKey) return;
+  var k = qKey+"|"+id, o = facOverride(qKey, id), ant = o ? o.flete : "(base)";
+  if(String(valor).trim()===""){
+    if(!o) return;
+    DB.fletesQuincena = DB.fletesQuincena.filter(function(x){ return x.id!==k; });
+    logHistorial("Flete cliente", id, "flete periodo", ant, "(base)", t.nombre, qKey, "");
+  } else {
+    var nuevo = facNum(valor);
+    if(o){ if(Number(o.flete)===nuevo) return; o.flete = nuevo; }
+    else DB.fletesQuincena.push({id:k, quincena:qKey, periodo:P.label, tarifaId:id, flete:nuevo});
+    logHistorial("Flete cliente", id, "flete periodo", ant, nuevo, t.nombre, qKey, "");
+  }
+  saveDB(); renderFacturacion();
+}
+function facAgregarTarifa(){
+  var n = document.getElementById("facNuevaRuta").value.trim(), f = facNum(document.getElementById("facNuevoFlete").value);
+  if(!n){ alert("Escribe el nombre de la ruta."); return; }
+  var id = "F"+uid();
+  DB.fletesCliente.push({id:id, nombre:n, flete:f});
+  logHistorial("Flete cliente", id, "nueva ruta", "", n+" = "+fmt(f), "", "", "");
+  document.getElementById("facNuevaRuta").value=""; document.getElementById("facNuevoFlete").value="";
+  saveDB(); renderFacturacion();
+}
+function facEliminarTarifa(id){
+  var t = facTarifaById(id); if(!t) return;
+  if(!confirm("¿Eliminar la ruta de flete «"+t.nombre+"»?\n\nTambién se quitan sus cambios por corte y las asignaciones del Batch que apuntaban a ella.")) return;
+  DB.fletesCliente = DB.fletesCliente.filter(function(x){ return x.id!==id; });
+  DB.fletesQuincena = DB.fletesQuincena.filter(function(x){ return x.tarifaId!==id; });
+  DB.fletesMapeo = DB.fletesMapeo.filter(function(x){ return x.tarifaId!==id; });
+  logHistorial("Flete cliente", id, "ruta eliminada", t.nombre+" = "+fmt(t.flete), "", "", "", "");
+  saveDB(); renderFacturacion();
+}
+function facImportarExcel(input){
+  var f = input.files && input.files[0]; if(!f) return;
+  var rd = new FileReader();
+  rd.onload = function(e){
+    var msg = document.getElementById("facMensaje");
+    try {
+      var wb = XLSX.read(new Uint8Array(e.target.result), {type:"array"});
+      var filas = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:1, raw:true, defval:""});
+      if(!filas.length) throw new Error("El archivo está vacío.");
+      var enc = filas[0].map(concNormTexto), iR = enc.indexOf("ruta"), iF = -1;
+      enc.forEach(function(h,i){ if(iF<0 && h.indexOf("flete")>=0) iF = i; });
+      if(iR<0 || iF<0) throw new Error("No encontré las columnas «Ruta» y «FLETE» en la primera hoja.");
+      var nuevas = 0, cambiadas = 0, iguales = 0;
+      for(var r=1;r<filas.length;r++){
+        var nombre = String(filas[r][iR]||"").trim(), fl = Number(filas[r][iF]);
+        if(!nombre || isNaN(fl)) continue;
+        var clave = concNormTexto(nombre), t = null;
+        DB.fletesCliente.forEach(function(x){ if(!t && concNormTexto(x.nombre)===clave) t = x; });
+        if(t){
+          if(Number(t.flete)!==fl){ logHistorial("Flete cliente", t.id, "flete base", t.flete, fl, "Importado de "+f.name, "", ""); t.flete = fl; cambiadas++; } else iguales++;
+        } else {
+          var id = "F"+uid()+r; DB.fletesCliente.push({id:id, nombre:nombre, flete:fl});
+          logHistorial("Flete cliente", id, "nueva ruta", "", nombre+" = "+fmt(fl), "Importado de "+f.name, "", ""); nuevas++;
+        }
+      }
+      saveDB(); renderFacturacion();
+      document.getElementById("facMensaje").innerHTML = '<div class="callout ok">✔ «'+escHtml(f.name)+'»: '+nuevas+' ruta(s) nueva(s), '+cambiadas+' flete(s) actualizado(s), '+iguales+' sin cambios.</div>';
+    } catch(err){ msg.innerHTML = '<div class="callout danger">'+escHtml(err.message||String(err))+'</div>'; }
+    input.value = "";
+  };
+  rd.readAsArrayBuffer(f);
+}
+
+/* ---- Asignación automática origen–destino del Batch → ruta de flete ---- */
+var FAC_STOP = {"de":1,"del":1,"la":1,"el":1,"los":1,"las":1,"y":1,"planta":1,"cantera":1,"bodega":1,"bodegas":1,"zona":1,"parque":1,"industrial":1,"sas":1};
+function facTokens(t){
+  return concNormTexto(t).replace(/[^a-z0-9]+/g," ").split(" ").filter(function(w){ return w.length>=2 && !FAC_STOP[w]; });
+}
+function facInter(a,b){ var n=0; a.forEach(function(w){ if(b.indexOf(w)>=0) n++; }); return n; }
+function facSugerir(origen, destino){
+  var o = facTokens(origen), d = facTokens(destino), mejor = null, mejorS = 0, empate = false;
+  DB.fletesCliente.forEach(function(t){
+    var partes = String(t.nombre).split("-"), tO = facTokens(partes[0]), tD = facTokens(partes.slice(1).join(" "));
+    if(!tO.length || !tD.length || !o.length || !d.length) return;
+    var so = facInter(o,tO)/Math.min(o.length,tO.length), sd = facInter(d,tD)/Math.min(d.length,tD.length);
+    if(so<=0 || sd<=0) return;
+    var sc = so+sd;
+    if(sc>mejorS+0.0001){ mejorS=sc; mejor=t; empate=false; } else if(Math.abs(sc-mejorS)<=0.0001){ empate=true; }
+  });
+  return (mejor && !empate && mejorS>=1.2) ? mejor : null;
+}
+function facClave(origen, destino){ return concNormTexto(origen)+"|"+concNormTexto(destino); }
+function facMapeoDe(clave){ for(var i=0;i<DB.fletesMapeo.length;i++){ if(DB.fletesMapeo[i].id===clave) return DB.fletesMapeo[i]; } return null; }
+function facAsignar(idx, tarifaId){
+  var c = FAC_COMBOS[idx]; if(!c) return;
+  DB.fletesMapeo = DB.fletesMapeo.filter(function(x){ return x.id!==c.clave; });
+  if(tarifaId) DB.fletesMapeo.push({id:c.clave, origen:String(c.origen), destino:String(c.destino), tarifaId:tarifaId});
+  var t = facTarifaById(tarifaId);
+  logHistorial("Flete cliente", c.clave, "asignación batch", "", (c.origen+" → "+c.destino)+" = "+(t?t.nombre:"(automática)"), "", "", "");
+  saveDB(); renderFacturacion();
+}
+
+/* Corte elegido: un Batch guardado, el archivo pendiente, todos los guardados o un rango de fechas. */
+function facPeriodo(){
+  var sel = document.getElementById("facPeriodo"); if(!sel || !sel.value) return null;
+  var v = sel.value, lotes = DB.batchLotes||[];
+  if(v==="__rango"){
+    var d = document.getElementById("facDesde").value, h = document.getElementById("facHasta").value;
+    return {modo:"rango", key:"R:"+d+"|"+h, label:"Rango "+(d||"…")+" a "+(h||"…"), desde:d, hasta:h};
+  }
+  if(v==="__todos"){
+    var mn="", mx=""; lotes.forEach(function(l){ if(!mn||l.desde<mn) mn=l.desde; if(!mx||l.hasta>mx) mx=l.hasta; });
+    return {modo:"todos", key:"T", label:"Todos los Batch guardados", desde:mn, hasta:mx};
+  }
+  if(v==="__pend" && CONC_PEND){
+    return {modo:"pend", key:"R:"+(CONC_PEND.minF||"")+"|"+(CONC_PEND.maxF||""), label:"Archivo por guardar: "+CONC_PEND.archivo, desde:CONC_PEND.minF||"", hasta:CONC_PEND.maxF||""};
+  }
+  var l = concLoteById(v);
+  return l ? {modo:"lote", key:l.id, id:l.id, label:l.archivo+" ("+l.desde+" a "+l.hasta+")", desde:l.desde, hasta:l.hasta} : null;
+}
+function facLlenarPeriodos(){
+  var sel = document.getElementById("facPeriodo"), prev = sel.value, opts = [];
+  if(CONC_PEND) opts.push(['__pend','⏳ Archivo por guardar: '+CONC_PEND.archivo]);
+  (DB.batchLotes||[]).slice().sort(function(a,b){ return b.desde.localeCompare(a.desde)||b.hasta.localeCompare(a.hasta); })
+    .forEach(function(l){ opts.push([l.id, 'Batch: '+l.archivo+' ('+l.desde+' a '+l.hasta+')']); });
+  if((DB.batchLotes||[]).length>1) opts.push(['__todos','Todos los Batch guardados']);
+  opts.push(['__rango','Rango de fechas…']);
+  sel.innerHTML = opts.map(function(o){ return '<option value="'+escHtml(o[0])+'">'+escHtml(o[1])+'</option>'; }).join("");
+  var existe = opts.some(function(o){ return o[0]===prev; });
+  sel.value = existe ? prev : opts[0][0];
+  document.getElementById("facRangoBox").style.display = (sel.value==="__rango") ? "" : "none";
+}
+
+function facFilasQuincena(P){
+  concReconstruir();
+  if(!CONC) return [];
+  var out = [];
+  CONC.filas.forEach(function(f){
+    var l = f.loteId ? concLoteById(f.loteId) : null, fecha = f.fecha || (l ? l.desde : "");
+    var ok = false;
+    if(P.modo==="lote") ok = (f.loteId===P.id);
+    else if(P.modo==="pend") ok = !f.loteId;
+    else if(P.modo==="todos") ok = !!f.loteId;
+    else ok = !!fecha && (!P.desde || fecha>=P.desde) && (!P.hasta || fecha<=P.hasta);
+    if(ok) out.push({f:f, fecha:fecha});
+  });
+  out.sort(function(a,b){ return a.fecha.localeCompare(b.fecha) || String(a.f.rem).localeCompare(String(b.f.rem)); });
+  return out;
+}
+
+function facCalcular(q){
+  var kg = (document.getElementById("facUnidad").value==="kg");
+  var filas = facFilasQuincena(q), grupos = {}, filasCalc = [];
+  var tot = {peso:0, fac:0, imp:0, sinTarifa:0, filas:filas.length};
+  filas.forEach(function(x){
+    var f = x.f, clave = facClave(f.origen, f.destino), m = facMapeoDe(clave), t = null, auto = false;
+    if(m) t = facTarifaById(m.tarifaId);
+    if(!t){ t = facSugerir(f.origen, f.destino); auto = !!t; }
+    var pesoBruto = Number(f.peso), pesoT = isNaN(pesoBruto) ? 0 : (kg ? pesoBruto/1000 : pesoBruto);
+    var flete = t ? facFleteAplicado(t, q.key) : 0, fac = t ? pesoT*flete : 0, imp = Number(f.importe)||0;
+    var r = {fecha:x.fecha, rem:f.rem, batch:f.batch, origen:f.origen, destino:f.destino, tarifa:t, auto:auto, clave:clave,
+             peso:pesoT, fleteBatch:Number(f.flete), flete:flete, fac:fac, imp:imp, dif:fac-imp};
+    filasCalc.push(r);
+    var g = (grupos[t?t.id:"__sin"] = grupos[t?t.id:"__sin"] || {tarifa:t, n:0, peso:0, fac:0, imp:0, fletesBatch:[]});
+    g.n++; g.peso+=pesoT; g.fac+=fac; g.imp+=imp;
+    if(!isNaN(r.fleteBatch) && r.fleteBatch!==0 && g.fletesBatch.indexOf(Math.round(r.fleteBatch))<0) g.fletesBatch.push(Math.round(r.fleteBatch));
+    tot.peso+=pesoT; tot.fac+=fac; tot.imp+=imp; if(!t) tot.sinTarifa++;
+  });
+  return {filas:filasCalc, grupos:grupos, tot:tot};
+}
+
+function renderFacturacion(){
+  var panel = document.getElementById("panel-facturacion"); if(!panel || !DB) return;
+  facAsegurar();
+  facLlenarPeriodos();
+  var sel = document.getElementById("facPeriodo");
+  document.getElementById("facRangoBox").style.display = (sel.value==="__rango") ? "" : "none";
+  var q = facPeriodo(); if(!q) return;
+
+  /* 1. Tarifas */
+  var tb = document.querySelector("#tablaFacTarifas tbody");
+  tb.innerHTML = DB.fletesCliente.map(function(t){
+    var o = facOverride(q.key, t.id), ap = facFleteAplicado(t, q.key);
+    return '<tr><td class="txt">'+escHtml(t.nombre)+'</td>'+
+      '<td><input type="number" step="100" style="width:110px;" value="'+(Number(t.flete)||0)+'" onchange="facEditarBase(\''+t.id+'\',this.value)"></td>'+
+      '<td><input type="number" step="100" style="width:110px;" placeholder="'+(Number(t.flete)||0)+'" value="'+(o?Number(o.flete):"")+'" onchange="facEditarQuincena(\''+t.id+'\',this.value)"></td>'+
+      '<td><b>'+fmt(ap)+'</b>'+(o?' <span class="pill revision" title="Flete distinto al base solo en este corte">Ajustado</span>':'')+'</td>'+
+      '<td><button class="btn sm" onclick="facEliminarTarifa(\''+t.id+'\')">Eliminar</button></td></tr>';
+  }).join("");
+
+  var R = facCalcular(q); FAC_ULTIMO = {q:q, R:R};
+
+  /* 2. Asignación origen–destino */
+  var combos = {}; FAC_COMBOS = [];
+  R.filas.forEach(function(r){ var c = (combos[r.clave] = combos[r.clave] || {clave:r.clave, origen:r.origen, destino:r.destino, n:0, tarifa:r.tarifa, auto:r.auto}); c.n++; });
+  Object.keys(combos).forEach(function(k){ FAC_COMBOS.push(combos[k]); });
+  var opts = function(sel){ return '<option value="">'+(sel&&sel.auto?'(sugerida automáticamente)':'— Sin ruta asignada —')+'</option>'+DB.fletesCliente.map(function(t){ return '<option value="'+t.id+'"'+((!sel.auto && sel.tarifa && sel.tarifa.id===t.id)?' selected':'')+'>'+escHtml(t.nombre)+'</option>'; }).join(""); };
+  var mp = document.getElementById("facMapeo");
+  if(!FAC_COMBOS.length){ mp.innerHTML = '<p class="hint" style="margin:0;">No hay remisiones del Batch en este corte. Carga y guarda el Batch en «Conciliación Batch» o elige otro corte.</p>'; }
+  else {
+    mp.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr><th>Origen (Batch)</th><th>Destino (Batch)</th><th>Remisiones</th><th>Ruta de flete</th><th>Estado</th></tr></thead><tbody>'+
+      FAC_COMBOS.map(function(c,i){
+        var estado = c.tarifa ? (c.auto?'<span class="pill revision">Sugerida: confirma</span>':'<span class="pill aprobada">Asignada</span>') : '<span class="pill rechazada">Sin ruta</span>';
+        var o = '<option value="">'+(c.auto?'(sugerida: '+escHtml(c.tarifa.nombre)+')':'— Elegir ruta —')+'</option>'+DB.fletesCliente.map(function(t){ return '<option value="'+t.id+'"'+((!c.auto && c.tarifa && c.tarifa.id===t.id)?' selected':'')+'>'+escHtml(t.nombre)+'</option>'; }).join("");
+        return '<tr><td class="txt">'+escHtml(c.origen)+'</td><td class="txt">'+escHtml(c.destino)+'</td><td>'+c.n+'</td><td class="txt"><select style="max-width:360px;" onchange="facAsignar('+i+',this.value)">'+o+'</select></td><td class="txt">'+estado+'</td></tr>';
+      }).join("")+'</tbody></table></div>';
+  }
+
+  /* Métricas */
+  var T = R.tot, dif = T.fac - T.imp, ok = Math.abs(dif) < 1;
+  document.getElementById("facMetricas").innerHTML =
+    '<div class="callout info" style="margin-bottom:10px;"><b>Corte:</b> '+escHtml(q.label)+'</div>'+
+    '<div class="grid4" style="margin-bottom:18px;">'+
+      '<div class="metric"><p class="m-label">Total a facturar (peso × flete)</p><div class="m-value">'+fmt(T.fac)+'</div></div>'+
+      '<div class="metric alt"><p class="m-label">Importe según Batch</p><div class="m-value">'+fmt(T.imp)+'</div></div>'+
+      '<div class="metric"><p class="m-label">Diferencia (a facturar − Batch)</p><div class="m-value">'+(dif>0?'+':'')+fmt(dif)+'</div></div>'+
+      '<div class="metric alt"><p class="m-label">Peso total · remisiones</p><div class="m-value">'+concFmtPeso(T.peso)+' · '+T.filas+'</div></div>'+
+    '</div>'+
+    (T.filas && T.sinTarifa ? '<div class="callout warn"><b>⚠ '+T.sinTarifa+' remisión(es) sin ruta de flete asignada</b> no suman al total a facturar. Asígnalas en el paso 2.</div>' : '')+
+    (T.filas && !T.sinTarifa ? '<div class="callout '+(ok?'ok':'warn')+'">'+(ok?'✔ Tu facturación coincide con el importe del Batch.':'La facturación calculada con tus fletes difiere del importe del Batch en '+fmt(Math.abs(dif))+(dif>0?' (tú facturarías más)':' (el Batch paga más)')+'. Revisa abajo por ruta qué flete usa el cliente frente al tuyo.')+'</div>' : '');
+
+  /* 3. Reparto por quincena */
+  var qs = {}; R.filas.forEach(function(r){
+    var qq = quincenaDeFecha(r.fecha), k = qq ? qq.key : "sin", g = (qs[k] = qs[k] || {label:qq?qq.label:"Sin fecha", n:0, peso:0, fac:0, imp:0});
+    g.n++; g.peso+=r.peso; g.fac+=r.fac; g.imp+=r.imp;
+  });
+  var qk = Object.keys(qs).sort();
+  document.getElementById("facPorQuincena").innerHTML = !qk.length ? '<p class="hint" style="margin:0;">Sin datos para este corte.</p>' :
+    '<div class="hint" style="margin:0 0 8px;">Si el corte cruza dos o más quincenas, aquí ves cuánto de la facturación corresponde a cada una. El total debe coincidir con el del corte.</div><div class="table-wrap"><table class="data"><thead><tr><th>Quincena</th><th>Remisiones</th><th>Peso</th><th>A facturar</th><th>Importe Batch</th><th>Diferencia</th></tr></thead><tbody>'+
+    qk.map(function(k){ var g=qs[k], d=g.fac-g.imp; return '<tr><td class="txt">'+escHtml(g.label)+'</td><td>'+g.n+'</td><td>'+concFmtPeso(g.peso)+'</td><td><b>'+fmt(g.fac)+'</b></td><td>'+fmt(g.imp)+'</td><td>'+(d>0?"+":"")+fmt(d)+'</td></tr>'; }).join("")+
+    (function(){ var tn=0,tp=0,tf=0,ti=0; qk.forEach(function(k){ var g=qs[k]; tn+=g.n; tp+=g.peso; tf+=g.fac; ti+=g.imp; }); var td=tf-ti; return '<tr><td class="txt"><b>TOTAL DEL CORTE</b></td><td><b>'+tn+'</b></td><td><b>'+concFmtPeso(tp)+'</b></td><td><b>'+fmt(tf)+'</b></td><td><b>'+fmt(ti)+'</b></td><td><b>'+(td>0?"+":"")+fmt(td)+'</b></td></tr>'; })()+'</tbody></table></div>';
+
+  /* 4. Resumen por ruta */
+  var claves = Object.keys(R.grupos).sort(function(a,b){ return R.grupos[b].fac - R.grupos[a].fac; });
+  var rr = document.getElementById("facResumenRuta");
+  rr.innerHTML = !claves.length ? '<p class="hint" style="margin:0;">Sin datos para este corte.</p>' :
+    '<div class="table-wrap"><table class="data"><thead><tr><th>Ruta</th><th>Remisiones</th><th>Peso</th><th>Flete del Batch</th><th>Tu flete</th><th>A facturar</th><th>Importe Batch</th><th>Diferencia</th></tr></thead><tbody>'+
+    claves.map(function(k){
+      var g = R.grupos[k], d = g.fac-g.imp;
+      return '<tr><td class="txt">'+(g.tarifa?escHtml(g.tarifa.nombre):'<span class="pill rechazada">Sin ruta asignada</span>')+'</td><td>'+g.n+'</td><td>'+concFmtPeso(g.peso)+'</td><td>'+(g.fletesBatch.length?g.fletesBatch.map(fmt).join(" / "):"—")+'</td><td>'+(g.tarifa?fmt(facFleteAplicado(g.tarifa,q.key)):"—")+'</td><td><b>'+fmt(g.fac)+'</b></td><td>'+fmt(g.imp)+'</td><td>'+(g.tarifa?((d>0?"+":"")+fmt(d)):"—")+'</td></tr>';
+    }).join("")+
+    '<tr><td class="txt"><b>TOTAL</b></td><td><b>'+T.filas+'</b></td><td><b>'+concFmtPeso(T.peso)+'</b></td><td></td><td></td><td><b>'+fmt(T.fac)+'</b></td><td><b>'+fmt(T.imp)+'</b></td><td><b>'+(dif>0?"+":"")+fmt(dif)+'</b></td></tr></tbody></table></div>';
+
+  /* 5. Detalle */
+  var MAX = 500;
+  document.getElementById("facDetalle").innerHTML = !R.filas.length ? '<p class="hint" style="margin:0;">Sin remisiones en este corte.</p>' :
+    '<div class="table-wrap"><table class="data"><thead><tr><th>Fecha</th><th>Remisión</th><th>Batch</th><th>Origen</th><th>Destino</th><th>Ruta de flete</th><th>Peso</th><th>Tu flete</th><th>A facturar</th><th>Importe Batch</th><th>Diferencia</th></tr></thead><tbody>'+
+    R.filas.slice(0,MAX).map(function(r){
+      return '<tr><td>'+r.fecha+'</td><td>'+escHtml(r.rem)+'</td><td>'+escHtml(r.batch)+'</td><td class="txt">'+escHtml(r.origen)+'</td><td class="txt">'+escHtml(r.destino)+'</td><td class="txt">'+(r.tarifa?escHtml(r.tarifa.nombre):'<span class="pill rechazada">Sin ruta</span>')+'</td><td>'+concFmtPeso(r.peso)+'</td><td>'+(r.tarifa?fmt(r.flete):"—")+'</td><td><b>'+fmt(r.fac)+'</b></td><td>'+fmt(r.imp)+'</td><td>'+(r.tarifa?((r.dif>0?"+":"")+fmt(r.dif)):"—")+'</td></tr>';
+    }).join("")+'</tbody></table></div>'+(R.filas.length>MAX?'<div class="hint">Se muestran '+MAX+' de '+R.filas.length+'. El Excel exportado trae todas.</div>':'');
+}
+
+function facExportar(){
+  if(!FAC_ULTIMO || !FAC_ULTIMO.R.filas.length){ alert("No hay datos del Batch en este corte para exportar."); return; }
+  var q = FAC_ULTIMO.q, R = FAC_ULTIMO.R, T = R.tot;
+  var resumen = [
+    {Concepto:"Corte de facturación", Valor:q.label},
+    {Concepto:"Remisiones del Batch", Valor:T.filas},
+    {Concepto:"Peso total", Valor:Math.round(T.peso*100)/100},
+    {Concepto:"Total a facturar (peso × flete)", Valor:Math.round(T.fac)},
+    {Concepto:"Importe según Batch", Valor:Math.round(T.imp)},
+    {Concepto:"Diferencia (a facturar − Batch)", Valor:Math.round(T.fac-T.imp)},
+    {Concepto:"Remisiones sin ruta de flete", Valor:T.sinTarifa}
+  ];
+  var porRuta = Object.keys(R.grupos).map(function(k){ var g=R.grupos[k]; return {Ruta:g.tarifa?g.tarifa.nombre:"Sin ruta asignada", Remisiones:g.n, Peso:Math.round(g.peso*100)/100, "Flete del Batch":g.fletesBatch.join(" / "), "Tu flete":g.tarifa?facFleteAplicado(g.tarifa,q.key):"", "A facturar":Math.round(g.fac), "Importe Batch":Math.round(g.imp), Diferencia:Math.round(g.fac-g.imp)}; });
+  var det = R.filas.map(function(r){ return {Fecha:r.fecha, "Remision proveedor":r.rem, Batch:r.batch, Origen:r.origen, Destino:r.destino, "Ruta de flete":r.tarifa?r.tarifa.nombre:"Sin ruta", Peso:Math.round(r.peso*100)/100, "Tu flete":r.tarifa?r.flete:"", "A facturar":Math.round(r.fac), "Importe Batch":Math.round(r.imp), Diferencia:r.tarifa?Math.round(r.dif):""}; });
+  var tar = DB.fletesCliente.map(function(t){ return {Ruta:t.nombre, "Flete base":Number(t.flete)||0, "Flete aplicado en el corte":facFleteAplicado(t,q.key)}; });
+  descargarLibro(libroDesde([hojaDesde("Resumen",resumen), hojaDesde("Por ruta",porRuta), hojaDesde("Detalle",det), hojaDesde("Fletes",tar)]), "facturacion-corte-"+(q.desde||"")+"_"+(q.hasta||"")+".xlsx");
 }
 
 var APLICATIVO_INICIADO = false;
