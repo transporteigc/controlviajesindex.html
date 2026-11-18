@@ -135,6 +135,18 @@ table.data tbody tr:hover{background:var(--cream);}
 .callout.danger{background:var(--red-bg);color:#6b241a;border:1px solid #E9C4BE;}
 .callout.ok{background:var(--green-bg);color:#1c4230;border:1px solid #BFDBCB;}
 .callout.info{background:var(--blue-bg);color:#123246;border:1px solid #C4D6DE;}
+.cov-meses{display:flex;flex-wrap:wrap;gap:18px;margin-top:10px;}
+.cov-mes{min-width:236px;}
+.cov-mes h4{margin:0 0 6px;font-size:13px;color:var(--navy);}
+.cov-grid{display:grid;grid-template-columns:repeat(7,32px);gap:3px;}
+.cov-dow{font-size:10px;color:var(--slate);text-align:center;}
+.cov-day{height:32px;border-radius:6px;font-size:11px;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;}
+.cov-day.ok{background:var(--green-bg);color:var(--green);}
+.cov-day.gap{background:var(--red-bg);color:var(--red);font-weight:700;border:1px solid #E9C4BE;}
+.cov-day.over{background:var(--amber-bg);color:var(--amber);}
+.cov-day.pend{background:#EEF1F3;color:#8A98A0;}
+.cov-leyenda{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--slate);margin:8px 0;}
+.cov-leyenda span i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-2px;}
 
 .finding{border-left:3px solid var(--gold);background:var(--paper);border-radius:0 10px 10px 0;padding:11px 15px;margin-bottom:9px;font-size:13px;color:var(--ink);border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line);}
 .finding b{color:var(--navy);}
@@ -327,9 +339,20 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
       <div class="field"><label for="concDesde">Viajes desde (fecha)</label><input type="date" id="concDesde" onchange="renderConciliacion()"></div>
       <div class="field"><label for="concHasta">Viajes hasta (fecha)</label><input type="date" id="concHasta" onchange="renderConciliacion()"></div>
     </div>
-    <div class="hint">Al cargar el archivo, «desde» se llena con 10 días antes de la primera fecha del Batch. Déjalo vacío para revisar todos los viajes. El archivo se lee solo en este navegador y no se guarda en Google Sheets: vuelve a cargarlo cuando quieras conciliar.</div>
+    <div class="hint">Al cargar un archivo se revisa primero (todavía no se guarda). Luego indicas el periodo que cubre y lo guardas: queda en Google Sheets junto con su periodo y no tienes que volver a cargarlo. «Viajes desde/hasta» solo filtra los viajes de la plataforma que se cruzan con los batch guardados.</div>
+    <div id="concGuardarBox" style="display:none;margin-top:12px;">
+      <h3 style="margin-top:6px;">Periodo que cubre este archivo</h3>
+      <div class="grid3">
+        <div class="field"><label for="concPerDesde">Periodo desde</label><input type="date" id="concPerDesde"></div>
+        <div class="field"><label for="concPerHasta">Periodo hasta</label><input type="date" id="concPerHasta"></div>
+        <div class="field"><label for="concOmitir">Remisiones ya guardadas</label><select id="concOmitir" onchange="renderConciliacion()"><option value="1">Omitirlas al guardar (recomendado)</option><option value="0">Guardarlas de todos modos</option></select></div>
+      </div>
+      <div class="btn-row"><button class="btn gold" onclick="concGuardarLote()">💾 Guardar información de este batch</button><button class="btn" onclick="concCancelarPend()">Descartar (no guardar)</button></div>
+    </div>
     <div id="concMensaje"></div>
   </div>
+
+  <div id="concHistorial"></div>
 
   <div id="concMetricas"></div>
   <div class="card" id="concControles" style="display:none;">
@@ -938,7 +961,9 @@ function seedDB(){
     prestamos: [],
     bonificaciones: [],
     liquidaciones: [],
-    historial: []
+    historial: [],
+    batchLotes: [],
+    batchFilas: []
   };
 }
 
@@ -2074,7 +2099,8 @@ var asPendienteMientrasEnviaba = false;
 var POLL_TIMER = null;
 var COLLECTION_KEYS = {
   conductores:"id", vehiculos:"placa", rutas:"codigo", viajes:"id",
-  prestamos:"id", bonificaciones:"id", liquidaciones:"id", historial:"id"
+  prestamos:"id", bonificaciones:"id", liquidaciones:"id", historial:"id",
+  batchLotes:"id", batchFilas:"id"
 };
 
 function getAccessKey(){ return (localStorage.getItem(ACCESS_KEY_STORAGE) || ACCESS_KEY_DEFAULT || "").trim(); }
@@ -2425,7 +2451,8 @@ function tieneDatosOperativosLocales(){
     (DB.prestamos && DB.prestamos.length) ||
     (DB.bonificaciones && DB.bonificaciones.length) ||
     (DB.liquidaciones && DB.liquidaciones.length) ||
-    (DB.historial && DB.historial.length)
+    (DB.historial && DB.historial.length) ||
+    (DB.batchLotes && DB.batchLotes.length)
   ));
 }
 
@@ -2566,9 +2593,10 @@ document.querySelectorAll(".tab-btn").forEach(function(btn){
 });
 
 /* ===== Conciliación de remisiones con el Batch (orden de compra del cliente) =====
-   El Excel se lee en el navegador y no se guarda en Google Sheets. El cruce se recalcula cada vez
-   a partir de los viajes que hay en la plataforma. */
-var CONC = null; /* {archivo, filas:[...], porRem:{clave:[filas]}} */
+   Cada Excel se guarda (en Google Sheets) con el periodo que cubre. El cruce se recalcula cada vez
+   con todos los batch guardados y los viajes que hay en la plataforma. */
+var CONC = null; /* {archivo, filas:[...], porRem:{clave:[filas]}} — se arma con los batch guardados (DB.batchLotes / DB.batchFilas) + el archivo pendiente de guardar */
+var CONC_PEND = null; /* archivo leído que todavía no se ha guardado */
 
 function concNormTexto(t){ return String(t==null?"":t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim(); }
 function concNormRem(x){
@@ -2620,31 +2648,223 @@ function concCargarArchivo(input){
           iPeso = ix(function(h){ return h.indexOf("peso")>=0; }), iFlete = ix(function(h){ return h==="flete"; }),
           iFecha = ix(function(h){ return h.indexOf("fecha")>=0; }), iImp = ix(function(h){ return h==="importe"; }),
           iTorre = ix(function(h){ return h.indexOf("viaje torre")>=0; });
-      var out = [], porRem = {}, minF = "";
+      var out = [], porRem = {}, minF = "", maxF = "";
       for(var r=1;r<filas.length;r++){
         var row = filas[r];
         var rem = String(row[iRem]==null?"":row[iRem]).trim(), bat = concFmtNum(row[iBatch]);
         if(!rem || !bat) continue; /* salta filas vacías y la fila de totales */
         var fi = iFecha>=0 ? concFechaIso(row[iFecha]) : "";
         if(fi && (!minF || fi<minF)) minF = fi;
+        if(fi && (!maxF || fi>maxF)) maxF = fi;
         var o = {batch:bat, rem:concFmtNum(rem), clave:concNormRem(rem),
           origen: iOri>=0?row[iOri]:"", destino: iDes>=0?row[iDes]:"", peso: iPeso>=0?row[iPeso]:"",
           flete: iFlete>=0?row[iFlete]:"", fecha: fi, importe: iImp>=0?(Number(row[iImp])||0):0, torre: iTorre>=0?row[iTorre]:""};
         out.push(o); (porRem[o.clave] = porRem[o.clave] || []).push(o);
       }
       if(!out.length) throw new Error("No hay filas con remisión y batch en el archivo.");
-      CONC = {archivo:f.name, hoja:nombreHoja, filas:out, porRem:porRem};
+      var guardadas = {};
+      (DB.batchFilas||[]).forEach(function(x){ var k=concNormRem(x.rem); (guardadas[k]=guardadas[k]||[]).push(x); });
+      var dups = 0;
+      out.forEach(function(o){ if(guardadas[o.clave]){ o.dup = guardadas[o.clave]; dups++; } });
+      CONC_PEND = {archivo:f.name, hoja:nombreHoja, filas:out, minF:minF, maxF:maxF, dups:dups};
+      document.getElementById("concPerDesde").value = minF || "";
+      document.getElementById("concPerHasta").value = maxF || "";
       document.getElementById("concDesde").value = minF ? concSumarDias(minF,-10) : "";
       document.getElementById("concHasta").value = "";
-      concMsg('<div class="callout">Archivo «'+escHtml(f.name)+'» · hoja «'+escHtml(nombreHoja)+'» · '+out.length+' remisiones con batch leídas.</div>');
+      concRenderPend();
       renderConciliacion();
     } catch(err){
-      CONC = null;
+      CONC_PEND = null;
+      document.getElementById("concGuardarBox").style.display = "none";
       concMsg('<div class="callout danger">'+escHtml(err.message||String(err))+'</div>');
       renderConciliacion();
     }
   };
   rd.readAsArrayBuffer(f);
+}
+
+var CONC_MESES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"];
+function concFmtFechaCorta(iso){ var p=String(iso||"").split("-"); return p.length===3 ? (+p[2])+" "+CONC_MESES[+p[1]-1].slice(0,3).toLowerCase()+" "+p[0] : "—"; }
+function concLoteById(id){ var L=DB.batchLotes||[]; for(var i=0;i<L.length;i++){ if(L[i].id===id) return L[i]; } return null; }
+
+/* Arma CONC con los batch guardados + el archivo leído que aún no se ha guardado. */
+function concReconstruir(){
+  var filas = [];
+  (DB.batchFilas||[]).forEach(function(x){
+    filas.push({batch:x.batch, rem:x.rem, clave:concNormRem(x.rem), origen:x.origen, destino:x.destino, peso:x.peso, flete:x.flete, fecha:x.fecha, importe:Number(x.importe)||0, torre:x.torre, loteId:x.loteId});
+  });
+  var omitir = (document.getElementById("concOmitir")||{}).value !== "0";
+  if(CONC_PEND){ CONC_PEND.filas.forEach(function(x){ if(!(omitir && x.dup)) filas.push(x); }); }
+  if(!filas.length){ CONC = null; return; }
+  var porRem = {};
+  filas.forEach(function(o){ (porRem[o.clave] = porRem[o.clave] || []).push(o); });
+  var n = (DB.batchLotes||[]).length;
+  CONC = {archivo: n+" archivo(s) guardado(s)"+(CONC_PEND?" + 1 por guardar":""), filas:filas, porRem:porRem};
+}
+
+/* Mensaje al leer un archivo: resumen + alerta de remisiones que ya estaban en archivos guardados. */
+function concRenderPend(){
+  var box = document.getElementById("concGuardarBox");
+  if(!CONC_PEND){ box.style.display = "none"; return; }
+  box.style.display = "";
+  var P = CONC_PEND, html = '<div class="callout info">Archivo «'+escHtml(P.archivo)+'» · hoja «'+escHtml(P.hoja)+'» · '+P.filas.length+' remisiones con batch leídas'+(P.minF?' · fechas del '+concFmtFechaCorta(P.minF)+' al '+concFmtFechaCorta(P.maxF):'')+'. <b>Aún no está guardado:</b> confirma el periodo y pulsa «Guardar este batch».</div>';
+  if(P.dups){
+    var lista = P.filas.filter(function(x){ return x.dup; }), filasT = lista.slice(0,40).map(function(x){
+      var prev = x.dup[0], l = concLoteById(prev.loteId);
+      return '<tr><td>'+escHtml(x.rem)+'</td><td><b>'+escHtml(x.batch)+'</b></td><td class="txt">'+(l?escHtml(l.archivo)+' ('+concFmtFechaCorta(l.desde)+' – '+concFmtFechaCorta(l.hasta)+')':'—')+'</td><td><b>'+escHtml(prev.batch)+'</b></td></tr>';
+    }).join("");
+    html += '<div class="callout danger"><b>⚠ Alerta: '+P.dups+' remisión(es) de este archivo ya fueron cargadas en archivos anteriores.</b> Por defecto se omiten al guardar para no duplicar el cobro; puedes cambiarlo en «Remisiones ya guardadas».' +
+      '<div class="table-wrap" style="margin-top:8px;"><table class="data"><thead><tr><th>Remisión</th><th>Batch en este archivo</th><th>Ya guardada en</th><th>Batch anterior</th></tr></thead><tbody>'+filasT+'</tbody></table></div>' +
+      (lista.length>40?'<div class="hint">Se muestran 40 de '+lista.length+'.</div>':'') + '</div>';
+  } else {
+    html += '<div class="callout ok">No hay remisiones repetidas con los archivos ya guardados.</div>';
+  }
+  concMsg(html);
+}
+
+function concCancelarPend(){
+  CONC_PEND = null;
+  var inp = document.getElementById("concArchivo"); if(inp) inp.value = "";
+  document.getElementById("concGuardarBox").style.display = "none";
+  concMsg("");
+  renderConciliacion();
+}
+
+function concGuardarLote(){
+  if(!CONC_PEND){ alert("Primero carga un archivo."); return; }
+  var d = document.getElementById("concPerDesde").value, h = document.getElementById("concPerHasta").value;
+  if(!d || !h){ alert("Indica el periodo (desde y hasta) que cubre este batch."); return; }
+  if(d>h){ alert("La fecha «desde» del periodo no puede ser posterior a «hasta»."); return; }
+  var omitir = document.getElementById("concOmitir").value !== "0";
+  var filas = CONC_PEND.filas.filter(function(f){ return !(omitir && f.dup); });
+  var omitidas = CONC_PEND.filas.length - filas.length;
+  if(!filas.length){ alert("Todas las remisiones de este archivo ya estaban guardadas en archivos anteriores. No hay nada nuevo que guardar."); return; }
+  var cruces = (DB.batchLotes||[]).filter(function(l){ return d<=l.hasta && h>=l.desde; });
+  if(cruces.length && !confirm("El periodo "+d+" a "+h+" se cruza con: "+cruces.map(function(l){ return l.archivo+" ("+l.desde+" a "+l.hasta+")"; }).join("; ")+".\n\n¿Guardar de todos modos?")) return;
+  var id = "BL"+uid();
+  var imp = filas.reduce(function(a,f){ return a+(Number(f.importe)||0); },0);
+  DB.batchLotes.push({id:id, archivo:CONC_PEND.archivo, hoja:CONC_PEND.hoja, desde:d, hasta:h, fechaCarga:nowDateStr(), horaCarga:nowTimeStr(), usuario:usuario(), nFilas:filas.length, nOmitidas:omitidas, importe:Math.round(imp)});
+  filas.forEach(function(f,i){
+    DB.batchFilas.push({id:id+"-"+i, loteId:id, batch:f.batch, rem:f.rem, fecha:f.fecha||"", origen:f.origen==null?"":f.origen, destino:f.destino==null?"":f.destino, peso:f.peso==null?"":f.peso, flete:f.flete==null?"":f.flete, importe:Number(f.importe)||0, torre:f.torre==null?"":f.torre});
+  });
+  logHistorial("Batch", id, "periodo", "", d+" a "+h, "Carga de batch: "+CONC_PEND.archivo+" ("+filas.length+" remisiones"+(omitidas?", "+omitidas+" repetidas omitidas":"")+")");
+  var nombre = CONC_PEND.archivo;
+  CONC_PEND = null;
+  var inp = document.getElementById("concArchivo"); if(inp) inp.value = "";
+  document.getElementById("concGuardarBox").style.display = "none";
+  saveDB();
+  concMsg('<div class="callout ok">✔ Batch «'+escHtml(nombre)+'» guardado para el periodo '+concFmtFechaCorta(d)+' – '+concFmtFechaCorta(h)+': '+filas.length+' remisiones'+(omitidas?' ('+omitidas+' repetidas omitidas)':'')+'.<div class="btn-row" style="margin:8px 0 0;"><button class="btn" onclick="concEliminarLote(\''+id+'\')">🗑 Eliminar este batch guardado</button></div></div>');
+  renderConciliacion();
+}
+
+function concEliminarLote(id){
+  var l = concLoteById(id); if(!l) return;
+  if(!confirm("¿Eliminar el batch «"+l.archivo+"» ("+l.desde+" a "+l.hasta+") y sus "+l.nFilas+" remisiones?\n\nEl periodo quedará sin cobertura.")) return;
+  DB.batchLotes = DB.batchLotes.filter(function(x){ return x.id!==id; });
+  DB.batchFilas = DB.batchFilas.filter(function(x){ return x.loteId!==id; });
+  logHistorial("Batch", id, "eliminado", l.desde+" a "+l.hasta, "", "Se eliminó el batch "+l.archivo);
+  saveDB();
+  concMsg('<div class="callout warn">Batch «'+escHtml(l.archivo)+'» eliminado ('+l.desde+' a '+l.hasta+'). Puedes volver a cargarlo cuando quieras.</div>');
+  renderConciliacion();
+}
+
+/* Cobertura por días: qué fechas están soportadas por algún archivo de batch. */
+function concCobertura(){
+  var lotes = DB.batchLotes||[];
+  if(!lotes.length) return null;
+  var cubre = {}, min = "9999-12-31", max = "0000-01-01";
+  lotes.forEach(function(l){
+    if(l.desde<min) min = l.desde; if(l.hasta>max) max = l.hasta;
+    var n = 0;
+    for(var d=l.desde; d<=l.hasta && n<1500; d=concSumarDias(d,1), n++){ (cubre[d]=cubre[d]||[]).push(l); }
+  });
+  var viajesDia = {};
+  DB.viajes.forEach(function(v){ viajesDia[v.fecha] = (viajesDia[v.fecha]||0)+1; });
+  var huecos = [], ini = null, n2 = 0;
+  for(var d2=min; d2<=max && n2<3000; d2=concSumarDias(d2,1), n2++){
+    if(!cubre[d2]){ if(!ini) ini = d2; }
+    else if(ini){ huecos.push({desde:ini, hasta:concSumarDias(d2,-1)}); ini = null; }
+  }
+  var hoy = nowDateStr();
+  return {cubre:cubre, min:min, max:max, huecos:huecos, viajesDia:viajesDia, hoy:hoy, finVista: hoy>max ? hoy : max};
+}
+function concDiasEntre(a,b){ var A=a.split("-"), B=b.split("-"); return Math.round((Date.UTC(+B[0],+B[1]-1,+B[2])-Date.UTC(+A[0],+A[1]-1,+A[2]))/86400000)+1; }
+
+function concRenderHistorial(){
+  var el = document.getElementById("concHistorial"); if(!el) return;
+  var lotes = (DB.batchLotes||[]).slice().sort(function(a,b){ return a.desde.localeCompare(b.desde) || a.hasta.localeCompare(b.hasta); });
+  if(!lotes.length){
+    el.innerHTML = '<div class="card"><h3>Historial de batch facturados</h3><p class="hint" style="font-size:13px;margin:0;">Todavía no hay batch guardados. Al guardar el primer archivo aparecerá aquí el periodo que cubre y el control de días facturados.</p></div>';
+    return;
+  }
+  var cov = concCobertura();
+
+  /* Remisiones repetidas entre archivos distintos */
+  var porRem = {};
+  (DB.batchFilas||[]).forEach(function(x){ var k=concNormRem(x.rem); (porRem[k]=porRem[k]||[]).push(x); });
+  var reps = [];
+  Object.keys(porRem).forEach(function(k){
+    var ls = {}; porRem[k].forEach(function(x){ ls[x.loteId]=true; });
+    if(Object.keys(ls).length>1) reps.push(porRem[k]);
+  });
+  var htmlReps = "";
+  if(reps.length){
+    var tr = reps.slice(0,40).map(function(g){
+      return '<tr><td><b>'+escHtml(g[0].rem)+'</b></td><td class="txt">'+g.map(function(x){ var l=concLoteById(x.loteId); return escHtml(l?l.archivo:"?")+' (batch '+escHtml(x.batch)+')'; }).join('<br>')+'</td></tr>';
+    }).join("");
+    htmlReps = '<div class="callout danger"><b>⚠ '+reps.length+' remisión(es) aparecen en más de un archivo de batch guardado.</b> Revisa que no se esté facturando dos veces.' +
+      '<div class="table-wrap" style="margin-top:8px;"><table class="data"><thead><tr><th>Remisión</th><th>Archivos donde aparece</th></tr></thead><tbody>'+tr+'</tbody></table></div>'+(reps.length>40?'<div class="hint">Se muestran 40 de '+reps.length+'.</div>':'')+'</div>';
+  }
+
+  /* Tabla de lotes */
+  var filas = lotes.map(function(l){
+    return '<tr><td class="txt">'+escHtml(l.archivo)+'</td><td>'+l.desde+'</td><td>'+l.hasta+'</td><td>'+concDiasEntre(l.desde,l.hasta)+'</td><td>'+l.nFilas+(l.nOmitidas?' <span class="hint">(+'+l.nOmitidas+' omitidas)</span>':'')+'</td><td>'+fmt(l.importe||0)+'</td><td>'+(l.fechaCarga||"")+'</td><td class="txt">'+escHtml(l.usuario||"")+'</td><td><button class="btn" onclick="concEliminarLote(\''+l.id+'\')">Eliminar</button></td></tr>';
+  }).join("");
+
+  /* Huecos */
+  var htmlHuecos;
+  if(cov.huecos.length){
+    htmlHuecos = '<div class="callout danger"><b>⚠ Hay días sin batch que los soporte entre '+concFmtFechaCorta(cov.min)+' y '+concFmtFechaCorta(cov.max)+':</b><ul style="margin:6px 0 0 18px;padding:0;">'+cov.huecos.map(function(g){
+      var nv = 0; for(var d=g.desde, n=0; d<=g.hasta && n<400; d=concSumarDias(d,1), n++){ nv += cov.viajesDia[d]||0; }
+      var dias = concDiasEntre(g.desde,g.hasta);
+      return '<li>'+(dias===1?concFmtFechaCorta(g.desde):concFmtFechaCorta(g.desde)+' al '+concFmtFechaCorta(g.hasta))+' · '+dias+' día(s)'+(nv?' · <b>'+nv+' viaje(s) en la plataforma</b>':' · sin viajes en la plataforma')+'</li>';
+    }).join("")+'</ul></div>';
+  } else {
+    htmlHuecos = '<div class="callout ok">Todos los días entre '+concFmtFechaCorta(cov.min)+' y '+concFmtFechaCorta(cov.max)+' están cubiertos por algún batch.</div>';
+  }
+  if(cov.hoy>cov.max){
+    htmlHuecos += '<div class="callout warn">Último día cubierto: <b>'+concFmtFechaCorta(cov.max)+'</b>. Pendiente por facturar desde el '+concFmtFechaCorta(concSumarDias(cov.max,1))+' hasta hoy ('+concDiasEntre(concSumarDias(cov.max,1),cov.hoy)+' día(s)).</div>';
+  }
+
+  /* Calendario por meses */
+  var p0 = cov.min.split("-"), p1 = cov.finVista.split("-");
+  var y = +p0[0], m = +p0[1], yf = +p1[0], mf = +p1[1], meses = "", guard = 0;
+  while((y<yf || (y===yf && m<=mf)) && guard++<36){
+    var primero = new Date(Date.UTC(y,m-1,1)), dow = (primero.getUTCDay()+6)%7, nd = new Date(Date.UTC(y,m,0)).getUTCDate();
+    var cel = "";
+    for(var i=0;i<dow;i++) cel += '<div></div>';
+    for(var dd=1; dd<=nd; dd++){
+      var iso = y+"-"+pad2(m)+"-"+pad2(dd), ls = cov.cubre[iso], cls, tip;
+      var nv = cov.viajesDia[iso]||0;
+      if(ls && ls.length>1){ cls="over"; tip="Cubierto por "+ls.length+" archivos (traslape): "+ls.map(function(l){return l.archivo;}).join(", "); }
+      else if(ls){ cls="ok"; tip="Cubierto por: "+ls[0].archivo; }
+      else if(iso>cov.min && iso<cov.max){ cls="gap"; tip="SIN batch"; }
+      else if(iso<cov.min){ cls="pend"; tip="Antes del primer batch"; }
+      else { cls="pend"; tip="Aún sin batch"; }
+      if(nv) tip += " · "+nv+" viaje(s) en la plataforma";
+      cel += '<div class="cov-day '+cls+'" title="'+escHtml(tip)+'">'+dd+'</div>';
+    }
+    meses += '<div class="cov-mes"><h4>'+CONC_MESES[m-1]+' '+y+'</h4><div class="cov-grid">'+['L','M','M','J','V','S','D'].map(function(x){ return '<div class="cov-dow">'+x+'</div>'; }).join("")+cel+'</div></div>';
+    m++; if(m>12){ m=1; y++; }
+  }
+
+  el.innerHTML = '<div class="card"><h3>Historial de batch facturados</h3>' +
+    '<div class="hint" style="margin:0 0 10px;">Todos los días del mes deben estar cubiertos por un archivo de batch. Pasa el cursor sobre un día para ver qué archivo lo soporta.</div>' +
+    htmlReps + htmlHuecos +
+    '<div class="cov-leyenda"><span><i style="background:var(--green-bg);"></i>Cubierto</span><span><i style="background:var(--red-bg);border:1px solid #E9C4BE;"></i>Sin batch</span><span><i style="background:var(--amber-bg);"></i>Cubierto por 2+ archivos</span><span><i style="background:#EEF1F3;"></i>Fuera del rango / pendiente</span></div>' +
+    '<div class="cov-meses">'+meses+'</div>' +
+    '<h3 style="margin-top:18px;">Archivos guardados</h3>' +
+    '<div class="table-wrap"><table class="data"><thead><tr><th>Archivo</th><th>Periodo desde</th><th>Periodo hasta</th><th>Días</th><th>Remisiones</th><th>Importe</th><th>Cargado el</th><th>Usuario</th><th></th></tr></thead><tbody>'+filas+'</tbody></table></div></div>';
 }
 
 function concPesoFlete(m){
@@ -2674,9 +2894,11 @@ function renderConciliacion(){
   var met = document.getElementById("concMetricas"), ctl = document.getElementById("concControles"),
       tv = document.getElementById("concTablaViajes"), hu = document.getElementById("concHuerfanas");
   if(!met) return;
+  concReconstruir();
+  concRenderHistorial();
   if(!CONC){
     ctl.style.display = "none"; tv.innerHTML = ""; hu.innerHTML = "";
-    met.innerHTML = '<div class="card"><p class="hint" style="font-size:13px;margin:0;">Carga el Excel del cliente para ver la conciliación.</p></div>';
+    met.innerHTML = '<div class="card"><p class="hint" style="font-size:13px;margin:0;">Carga y guarda el Excel del cliente para ver la conciliación.</p></div>';
     return;
   }
   ctl.style.display = "";
@@ -2742,14 +2964,15 @@ function exportarConciliacion(){
   });
   var huerf = res.sinViaje.map(function(x){ return {Batch:x.batch, "Remision proveedor":x.rem, "Fecha Batch":x.fecha, Origen:x.origen, Destino:x.destino, "Peso neto":x.peso, Flete:x.flete, Importe:x.importe}; });
   var resumen = [
-    {Concepto:"Archivo del cliente", Valor:CONC.archivo},
+    {Concepto:"Archivos de batch", Valor:CONC.archivo},
     {Concepto:"Viajes en la plataforma (periodo filtrado)", Valor:res.viajes.length},
     {Concepto:"Con batch", Valor:res.viajes.filter(function(x){return x.estado==="con";}).length},
     {Concepto:"Sin batch", Valor:res.viajes.filter(function(x){return x.estado==="sin";}).length},
     {Concepto:"Sin remisión", Valor:res.viajes.filter(function(x){return x.estado==="sinrem";}).length},
     {Concepto:"Remisiones del Batch sin viaje en la plataforma", Valor:res.sinViaje.length}
   ];
-  descargarLibro(libroDesde([hojaDesde("Resumen",resumen), hojaDesde("Viajes vs Batch",filas), hojaDesde("Batch sin viaje",huerf)]), "conciliacion-batch-"+nowDateStr()+".xlsx");
+  var hist = (DB.batchLotes||[]).slice().sort(function(a,b){ return a.desde.localeCompare(b.desde); }).map(function(l){ return {Archivo:l.archivo, "Periodo desde":l.desde, "Periodo hasta":l.hasta, "Fecha de carga":l.fechaCarga, Usuario:l.usuario||"", Remisiones:l.nFilas, "Importe":l.importe||0}; });
+  descargarLibro(libroDesde([hojaDesde("Resumen",resumen), hojaDesde("Viajes vs Batch",filas), hojaDesde("Batch sin viaje",huerf), hojaDesde("Historial batch",hist)]), "conciliacion-batch-"+nowDateStr()+".xlsx");
 }
 
 var APLICATIVO_INICIADO = false;
