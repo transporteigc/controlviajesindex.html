@@ -207,6 +207,7 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
   <div class="tabs-inner" id="tabsInner">
     <button class="tab-btn active" data-tab="registro">Registro diario</button>
     <button class="tab-btn" data-tab="consolidados">Consolidados</button>
+    <button class="tab-btn" data-tab="conciliacion">Conciliación Batch</button>
     <button class="tab-btn" data-tab="prestamos">Préstamos y bonificaciones</button>
     <button class="tab-btn" data-tab="liquidacion">Liquidación quincenal</button>
     <button class="tab-btn" data-tab="aprobaciones">Aprobaciones</button>
@@ -310,6 +311,37 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
       <tbody></tbody>
     </table></div>
   </div>
+</section>
+
+<section class="panel" id="panel-conciliacion">
+  <div class="section-lead">
+    <p class="eyebrow">Control con el cliente</p>
+    <h2>Conciliación de remisiones con el Batch</h2>
+    <p>Carga el Excel de la orden de compra del cliente (hoja «Batch»). El sistema cruza cada remisión registrada en la plataforma con la columna <b>REMISION PROVEEDOR</b> del archivo, le asigna su <b>BATCH PARA FACTURAR</b> y marca con un check los viajes que sí generaron batch.</p>
+  </div>
+
+  <div class="card">
+    <h3>1. Cargar archivo del cliente</h3>
+    <div class="grid3">
+      <div class="field"><label for="concArchivo">Excel con la hoja «Batch»</label><input type="file" id="concArchivo" accept=".xlsx,.xls,.csv" onchange="concCargarArchivo(this)"></div>
+      <div class="field"><label for="concDesde">Viajes desde (fecha)</label><input type="date" id="concDesde" onchange="renderConciliacion()"></div>
+      <div class="field"><label for="concHasta">Viajes hasta (fecha)</label><input type="date" id="concHasta" onchange="renderConciliacion()"></div>
+    </div>
+    <div class="hint">Al cargar el archivo, «desde» se llena con 10 días antes de la primera fecha del Batch. Déjalo vacío para revisar todos los viajes. El archivo se lee solo en este navegador y no se guarda en Google Sheets: vuelve a cargarlo cuando quieras conciliar.</div>
+    <div id="concMensaje"></div>
+  </div>
+
+  <div id="concMetricas"></div>
+  <div class="card" id="concControles" style="display:none;">
+    <h3>2. Viajes de la plataforma y su batch</h3>
+    <div class="grid3">
+      <div class="field"><label for="concFiltro">Mostrar</label><select id="concFiltro" onchange="renderConciliacion()"><option value="todos">Todos los viajes</option><option value="con">Solo con batch</option><option value="sin">Solo sin batch</option></select></div>
+      <div class="field"><label for="concBuscar">Buscar (remisión, batch, placa, conductor)</label><input type="text" id="concBuscar" oninput="renderConciliacion()" autocomplete="off"></div>
+      <div class="btn-row" style="align-self:end;margin:0 0 10px;"><button class="btn gold" onclick="exportarConciliacion()">Exportar a Excel</button></div>
+    </div>
+    <div id="concTablaViajes"></div>
+  </div>
+  <div id="concHuerfanas"></div>
 </section>
 
 <section class="panel" id="panel-prestamos">
@@ -2267,6 +2299,7 @@ function renderTodo(){
   renderHistorial();
   renderAnualDashboard();
   renderConfig();
+  renderConciliacion();
 }
 
 function normalizarDBRemota(datos){
@@ -2514,6 +2547,7 @@ function actualizarEstadoAppsScript(texto, tipo){
 
 var TAB_REFRESH = {
   consolidados: renderConsolidados,
+  conciliacion: renderConciliacion,
   prestamos: function(){ renderPrestamos(); renderBonificaciones(); renderBeneficiosEventuales(); },
   aprobaciones: renderAprobaciones,
   historial: renderHistorial,
@@ -2530,6 +2564,185 @@ document.querySelectorAll(".tab-btn").forEach(function(btn){
     if(TAB_REFRESH[btn.dataset.tab]) TAB_REFRESH[btn.dataset.tab]();
   });
 });
+
+/* ===== Conciliación de remisiones con el Batch (orden de compra del cliente) =====
+   El Excel se lee en el navegador y no se guarda en Google Sheets. El cruce se recalcula cada vez
+   a partir de los viajes que hay en la plataforma. */
+var CONC = null; /* {archivo, filas:[...], porRem:{clave:[filas]}} */
+
+function concNormTexto(t){ return String(t==null?"":t).toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/\s+/g," ").trim(); }
+function concNormRem(x){
+  var s = String(x==null?"":x).trim().toLowerCase();
+  if(/^\d+$/.test(s)) s = s.replace(/^0+/,"") || "0";
+  return s;
+}
+function concFmtNum(x){ if(x===""||x==null) return ""; var n=Number(x); return isNaN(n)?String(x):String(Math.round(n)); }
+function concFechaIso(v){
+  if(v instanceof Date && !isNaN(v)) return v.getFullYear()+"-"+pad2(v.getMonth()+1)+"-"+pad2(v.getDate());
+  var s = String(v==null?"":v).trim();
+  var m = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{4})/);
+  if(m) return m[3]+"-"+pad2(+m[2])+"-"+pad2(+m[1]);
+  m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  return m ? m[0] : "";
+}
+function concSumarDias(iso, dias){
+  var p = iso.split("-"); var d = new Date(Date.UTC(+p[0], +p[1]-1, +p[2]+dias));
+  return d.getUTCFullYear()+"-"+pad2(d.getUTCMonth()+1)+"-"+pad2(d.getUTCDate());
+}
+function concMsg(html){ var el=document.getElementById("concMensaje"); if(el) el.innerHTML = html||""; }
+
+function concCargarArchivo(input){
+  var f = input.files && input.files[0];
+  if(!f) return;
+  concMsg('<div class="callout">Leyendo «'+escHtml(f.name)+'»…</div>');
+  var rd = new FileReader();
+  rd.onerror = function(){ concMsg('<div class="callout danger">No se pudo leer el archivo.</div>'); };
+  rd.onload = function(e){
+    try {
+      var wb = XLSX.read(new Uint8Array(e.target.result), {type:"array", cellDates:true});
+      var nombreHoja = null;
+      wb.SheetNames.forEach(function(n){ if(!nombreHoja && /batch/i.test(n)) nombreHoja = n; });
+      if(!nombreHoja) nombreHoja = wb.SheetNames[0];
+      var filas = XLSX.utils.sheet_to_json(wb.Sheets[nombreHoja], {header:1, raw:true, defval:""});
+      if(!filas.length) throw new Error("La hoja «"+nombreHoja+"» está vacía.");
+      var enc = filas[0].map(concNormTexto);
+      var ix = function(pred){ for(var i=0;i<enc.length;i++){ if(pred(enc[i])) return i; } return -1; };
+      var iBatch = ix(function(h){ return h.indexOf("batch")>=0; });
+      /* Hay dos columnas llamadas «Remision proveedor»: se usa la que trae números de remisión (la otra trae códigos tipo ZM01). */
+      var iRem = -1, mejor = -1;
+      enc.forEach(function(h,i){
+        if(h.indexOf("remision")<0) return;
+        var n = 0; for(var r=1;r<filas.length;r++){ if(/^\d+$/.test(String(filas[r][i]==null?"":filas[r][i]).trim())) n++; }
+        if(n>mejor){ mejor=n; iRem=i; }
+      });
+      if(iBatch<0 || iRem<0 || mejor<=0) throw new Error("No encontré las columnas «BATCH PARA FACTURAR» y «REMISION PROVEEDOR» en la hoja «"+nombreHoja+"».");
+      var iOri = ix(function(h){ return h==="origen"; }), iDes = ix(function(h){ return h==="destino"; }),
+          iPeso = ix(function(h){ return h.indexOf("peso")>=0; }), iFlete = ix(function(h){ return h==="flete"; }),
+          iFecha = ix(function(h){ return h.indexOf("fecha")>=0; }), iImp = ix(function(h){ return h==="importe"; }),
+          iTorre = ix(function(h){ return h.indexOf("viaje torre")>=0; });
+      var out = [], porRem = {}, minF = "";
+      for(var r=1;r<filas.length;r++){
+        var row = filas[r];
+        var rem = String(row[iRem]==null?"":row[iRem]).trim(), bat = concFmtNum(row[iBatch]);
+        if(!rem || !bat) continue; /* salta filas vacías y la fila de totales */
+        var fi = iFecha>=0 ? concFechaIso(row[iFecha]) : "";
+        if(fi && (!minF || fi<minF)) minF = fi;
+        var o = {batch:bat, rem:concFmtNum(rem), clave:concNormRem(rem),
+          origen: iOri>=0?row[iOri]:"", destino: iDes>=0?row[iDes]:"", peso: iPeso>=0?row[iPeso]:"",
+          flete: iFlete>=0?row[iFlete]:"", fecha: fi, importe: iImp>=0?(Number(row[iImp])||0):0, torre: iTorre>=0?row[iTorre]:""};
+        out.push(o); (porRem[o.clave] = porRem[o.clave] || []).push(o);
+      }
+      if(!out.length) throw new Error("No hay filas con remisión y batch en el archivo.");
+      CONC = {archivo:f.name, hoja:nombreHoja, filas:out, porRem:porRem};
+      document.getElementById("concDesde").value = minF ? concSumarDias(minF,-10) : "";
+      document.getElementById("concHasta").value = "";
+      concMsg('<div class="callout">Archivo «'+escHtml(f.name)+'» · hoja «'+escHtml(nombreHoja)+'» · '+out.length+' remisiones con batch leídas.</div>');
+      renderConciliacion();
+    } catch(err){
+      CONC = null;
+      concMsg('<div class="callout danger">'+escHtml(err.message||String(err))+'</div>');
+      renderConciliacion();
+    }
+  };
+  rd.readAsArrayBuffer(f);
+}
+
+function concCalcular(){
+  var desde = (document.getElementById("concDesde")||{}).value || "", hasta = (document.getElementById("concHasta")||{}).value || "";
+  var cuenta = {}, claves = {};
+  DB.viajes.forEach(function(v){ var k=concNormRem(v.remision); if(k){ cuenta[k]=(cuenta[k]||0)+1; claves[k]=true; } });
+  var viajes = DB.viajes.filter(function(v){ return (!desde || v.fecha>=desde) && (!hasta || v.fecha<=hasta); })
+    .sort(function(a,b){ return (b.fecha+(b.hora||"")).localeCompare(a.fecha+(a.hora||"")); })
+    .map(function(v){
+      var k = concNormRem(v.remision), m = k ? (CONC.porRem[k]||[]) : [], bs = [];
+      m.forEach(function(x){ if(bs.indexOf(x.batch)<0) bs.push(x.batch); });
+      var estado = !k ? "sinrem" : (m.length ? "con" : "sin");
+      return {v:v, k:k, m:m, batch:bs.join(", "), estado:estado, repetida:(k && cuenta[k]>1)};
+    });
+  var sinViaje = CONC.filas.filter(function(x){ return !claves[x.clave]; });
+  return {viajes:viajes, sinViaje:sinViaje};
+}
+
+function renderConciliacion(){
+  var met = document.getElementById("concMetricas"), ctl = document.getElementById("concControles"),
+      tv = document.getElementById("concTablaViajes"), hu = document.getElementById("concHuerfanas");
+  if(!met) return;
+  if(!CONC){
+    ctl.style.display = "none"; tv.innerHTML = ""; hu.innerHTML = "";
+    met.innerHTML = '<div class="card"><p class="hint" style="font-size:13px;margin:0;">Carga el Excel del cliente para ver la conciliación.</p></div>';
+    return;
+  }
+  ctl.style.display = "";
+  var filtro = document.getElementById("concFiltro").value || "todos";
+  var buscar = (document.getElementById("concBuscar").value || "").trim().toLowerCase();
+  var res = concCalcular();
+  var con = res.viajes.filter(function(x){ return x.estado==="con"; }).length;
+  var sin = res.viajes.filter(function(x){ return x.estado==="sin"; }).length;
+  var sr = res.viajes.filter(function(x){ return x.estado==="sinrem"; }).length;
+  var impTotal = CONC.filas.reduce(function(a,x){ return a+x.importe; },0);
+  var impSinViaje = res.sinViaje.reduce(function(a,x){ return a+x.importe; },0);
+  var pct = res.viajes.length ? Math.round(con*100/res.viajes.length) : 0;
+
+  var lista = res.viajes.filter(function(x){
+    if(filtro==="con" && x.estado!=="con") return false;
+    if(filtro==="sin" && x.estado!=="sin" && x.estado!=="sinrem") return false;
+    if(buscar){
+      var c = conductorById(x.v.conductorId);
+      var txt = [x.v.remision, x.batch, x.v.vehiculo, c?c.nombre:""].join(" ").toLowerCase();
+      if(txt.indexOf(buscar)<0) return false;
+    }
+    return true;
+  });
+  var MAX = 500, recorte = lista.length>MAX;
+  var filasHtml = lista.slice(0,MAX).map(function(x){
+    var v = x.v, c = conductorById(v.conductorId), r = rutaByCodigo(v.rutaCodigo);
+    var pill = x.estado==="con" ? '<span class="pill aprobada">✔ Con batch</span>'
+             : x.estado==="sin" ? '<span class="pill rechazada">✖ Sin batch</span>'
+             : '<span class="pill revision">Sin remisión</span>';
+    if(x.repetida) pill += ' <span class="pill revision" title="Esta remisión está registrada más de una vez en la plataforma">Remisión repetida</span>';
+    var flete = x.m.reduce(function(a,y){ return a+y.importe; },0);
+    return '<tr><td>'+v.fecha+'</td><td class="txt">'+escHtml(c?c.nombre:v.conductorId)+'</td><td>'+escHtml(v.vehiculo||"")+'</td><td class="txt">'+escHtml(r?r.nombre:v.rutaCodigo)+'</td><td>'+(v.remision?escHtml(v.remision):"—")+'</td><td><b>'+(x.batch?escHtml(x.batch):"—")+'</b></td><td>'+(x.m.length?fmt(flete):"—")+'</td><td class="txt">'+pill+'</td></tr>';
+  }).join("");
+  if(!filasHtml) filasHtml = '<tr><td colspan="8" class="txt" style="text-align:center;color:var(--slate);padding:18px;">Sin viajes con este filtro.</td></tr>';
+
+  var huerfanas = res.sinViaje.map(function(x){
+    return '<tr><td><b>'+escHtml(x.batch)+'</b></td><td>'+escHtml(x.rem)+'</td><td>'+(x.fecha||"—")+'</td><td class="txt">'+escHtml(x.origen)+'</td><td class="txt">'+escHtml(x.destino)+'</td><td>'+escHtml(x.peso)+'</td><td>'+fmt(x.importe)+'</td></tr>';
+  }).join("");
+  if(!huerfanas) huerfanas = '<tr><td colspan="7" class="txt" style="text-align:center;color:var(--slate);padding:18px;">Todas las remisiones del Batch existen en la plataforma.</td></tr>';
+
+  met.innerHTML =
+    '<div class="grid4" style="margin-bottom:18px;">' +
+      '<div class="metric"><p class="m-label">Viajes en la plataforma</p><div class="m-value">'+res.viajes.length+'</div></div>' +
+      '<div class="metric alt"><p class="m-label">✔ Con batch</p><div class="m-value">'+con+' ('+pct+'%)</div></div>' +
+      '<div class="metric"><p class="m-label">✖ Sin batch</p><div class="m-value">'+sin+(sr?' · '+sr+' sin remisión':'')+'</div></div>' +
+      '<div class="metric alt"><p class="m-label">Batch sin viaje en plataforma</p><div class="m-value">'+res.sinViaje.length+'</div></div>' +
+    '</div>';
+  tv.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr><th>Fecha</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Remisión</th><th>Batch para facturar</th><th>Importe batch</th><th>Check</th></tr></thead><tbody>'+filasHtml+'</tbody></table></div>' +
+      (recorte?'<div class="hint">Se muestran los primeros '+MAX+' de '+lista.length+' viajes; el Excel exportado trae todos.</div>':'');
+  hu.innerHTML = '<div class="card"><h3>3. Remisiones del Batch que no están registradas en la plataforma</h3>' +
+      '<div class="hint" style="margin:0 0 10px;">Importe de estas remisiones: <b>'+fmt(impSinViaje)+'</b> de '+fmt(impTotal)+' en todo el archivo. Revisa si falta registrar el viaje o si la remisión se digitó diferente.</div>' +
+      '<div class="table-wrap"><table class="data"><thead><tr><th>Batch</th><th>Remisión</th><th>Fecha Batch</th><th>Origen</th><th>Destino</th><th>Peso neto</th><th>Importe</th></tr></thead><tbody>'+huerfanas+'</tbody></table></div></div>';
+}
+
+function exportarConciliacion(){
+  if(!CONC){ alert("Primero carga el Excel del Batch."); return; }
+  var res = concCalcular();
+  var estados = {con:"Con batch", sin:"Sin batch", sinrem:"Sin remisión"};
+  var filas = res.viajes.map(function(x){
+    var v=x.v, c=conductorById(v.conductorId), r=rutaByCodigo(v.rutaCodigo);
+    return {Fecha:v.fecha, Conductor:c?c.nombre:v.conductorId, Vehiculo:v.vehiculo||"", Ruta:r?r.nombre:v.rutaCodigo, "Remision proveedor":v.remision||"", "Batch para facturar":x.batch, "Importe batch":x.m.reduce(function(a,y){return a+y.importe;},0), Check:estados[x.estado]+(x.repetida?" (remisión repetida)":"")};
+  });
+  var huerf = res.sinViaje.map(function(x){ return {Batch:x.batch, "Remision proveedor":x.rem, "Fecha Batch":x.fecha, Origen:x.origen, Destino:x.destino, "Peso neto":x.peso, Importe:x.importe}; });
+  var resumen = [
+    {Concepto:"Archivo del cliente", Valor:CONC.archivo},
+    {Concepto:"Viajes en la plataforma (periodo filtrado)", Valor:res.viajes.length},
+    {Concepto:"Con batch", Valor:res.viajes.filter(function(x){return x.estado==="con";}).length},
+    {Concepto:"Sin batch", Valor:res.viajes.filter(function(x){return x.estado==="sin";}).length},
+    {Concepto:"Sin remisión", Valor:res.viajes.filter(function(x){return x.estado==="sinrem";}).length},
+    {Concepto:"Remisiones del Batch sin viaje en la plataforma", Valor:res.sinViaje.length}
+  ];
+  descargarLibro(libroDesde([hojaDesde("Resumen",resumen), hojaDesde("Viajes vs Batch",filas), hojaDesde("Batch sin viaje",huerf)]), "conciliacion-batch-"+nowDateStr()+".xlsx");
+}
 
 var APLICATIVO_INICIADO = false;
 function arrancarAplicativoTrasLogin(){
