@@ -255,7 +255,7 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
   </div></div>
 
   <div class="card">
-    <h3>Nuevo registro</h3>
+    <h3 id="tituloFormViaje">Nuevo registro</h3>
     <div class="grid4">
       <div class="field"><label for="vFecha">Fecha</label><input type="date" id="vFecha"></div>
       <div class="field"><label for="vConductor">Conductor</label><select id="vConductor"></select></div>
@@ -272,7 +272,7 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
       <div class="field"><label for="vTotal">Total</label><input type="number" id="vTotal" disabled></div>
       <div class="field"><label for="vObs">Observación</label><input type="text" id="vObs" placeholder="Opcional"></div>
     </div>
-    <div class="btn-row"><button class="btn primary" onclick="guardarViaje()">Registrar viaje</button></div>
+    <div class="btn-row"><button class="btn primary" id="btnGuardarViaje" onclick="guardarViaje()">Registrar viaje</button><button class="btn" id="btnCancelarEdicionViaje" style="display:none;" onclick="cancelarEdicionViaje()">Cancelar edición</button></div>
     <div id="viajeAlert"></div>
     <p class="hint" id="sheetsEstadoRegistro">Google Sheets: cada registro se sincroniza automáticamente (ver estado en Configuración → Google Sheets).</p>
   </div>
@@ -334,7 +334,7 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
   <div class="card">
     <h3>Detalle filtrado</h3>
     <div class="table-wrap"><table class="data" id="tablaDetalleFiltrado">
-      <thead><tr><th>Fecha</th><th>Hora</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Remisión</th><th>Viajes</th><th>Total</th></tr></thead>
+      <thead><tr><th>Fecha</th><th>Hora</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Remisión</th><th>Viajes</th><th>Total</th><th></th></tr></thead>
       <tbody></tbody>
     </table></div>
   </div>
@@ -1205,6 +1205,7 @@ function actualizarValorUnitario(){
 }
 
 function guardarViaje(){
+  if(EDIT_VIAJE_ID){ guardarEdicionViaje(); return; }
   var fecha = document.getElementById("vFecha").value;
   var conductorId = document.getElementById("vConductor").value;
   var vehiculo = document.getElementById("vVehiculo").value;
@@ -1265,6 +1266,123 @@ function guardarViaje(){
   renderAnualDashboard();
 }
 
+
+/* ===== Edición de viajes =====
+   - Viaje en quincena NO aprobada: se puede editar todo.
+   - Viaje en quincena aprobada/pagada: SOLO se puede editar el N.º de remisión (el resto queda bloqueado). */
+var EDIT_VIAJE_ID = null;
+var CAMPOS_VIAJE = ["vFecha","vConductor","vVehiculo","vRuta","vHora","vCantidad","vObs"];
+
+function asegurarOpcion(selId, valor, texto){
+  var sel = document.getElementById(selId), ok = false;
+  for(var i=0;i<sel.options.length;i++){ if(sel.options[i].value===valor){ ok=true; break; } }
+  if(!ok){ var o=document.createElement("option"); o.value=valor; o.textContent=texto; sel.appendChild(o); }
+}
+
+function editarViaje(id){
+  var v = DB.viajes.filter(function(x){ return x.id===id; })[0];
+  if(!v) return;
+  var tabBtn = document.querySelector('.tab-btn[data-tab="registro"]'); if(tabBtn) tabBtn.click();
+  EDIT_VIAJE_ID = id;
+  var c = conductorById(v.conductorId), r = rutaByCodigo(v.rutaCodigo);
+  asegurarOpcion("vConductor", v.conductorId, c?c.nombre:v.conductorId);
+  asegurarOpcion("vVehiculo", v.vehiculo, v.vehiculo);
+  asegurarOpcion("vRuta", v.rutaCodigo, r?r.nombre:v.rutaCodigo);
+  document.getElementById("vFecha").value = v.fecha;
+  document.getElementById("vConductor").value = v.conductorId;
+  document.getElementById("vVehiculo").value = v.vehiculo;
+  document.getElementById("vRuta").value = v.rutaCodigo;
+  document.getElementById("vHora").value = v.hora || "";
+  document.getElementById("vRemision").value = v.remision || "";
+  document.getElementById("vCantidad").value = v.cantidad;
+  document.getElementById("vObs").value = v.observacion || "";
+  document.getElementById("vValorUnitario").value = v.valorUnitario;
+  document.getElementById("vTotal").value = Math.round(v.total);
+  var bloqueado = isQuincenaLocked(v.conductorId, v.fecha);
+  CAMPOS_VIAJE.forEach(function(f){ document.getElementById(f).disabled = bloqueado; });
+  document.getElementById("tituloFormViaje").textContent = "Editar viaje";
+  document.getElementById("btnGuardarViaje").textContent = bloqueado ? "Guardar remisión" : "Guardar cambios";
+  document.getElementById("btnCancelarEdicionViaje").style.display = "";
+  document.getElementById("viajeAlert").innerHTML = bloqueado
+    ? '<div class="callout warn">Este viaje pertenece a una quincena ya aprobada: solo puedes agregar o modificar el <b>N.º de remisión</b>. Los demás datos están bloqueados.</div>'
+    : '<div class="callout info">Estás editando un viaje. Modifica los datos y pulsa «Guardar cambios».</div>';
+  document.getElementById("vRemision").focus();
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+
+function salirEdicionViaje(){
+  EDIT_VIAJE_ID = null;
+  CAMPOS_VIAJE.forEach(function(f){ document.getElementById(f).disabled = false; });
+  document.getElementById("tituloFormViaje").textContent = "Nuevo registro";
+  document.getElementById("btnGuardarViaje").textContent = "Registrar viaje";
+  document.getElementById("btnCancelarEdicionViaje").style.display = "none";
+  document.getElementById("vRemision").value = "";
+  document.getElementById("vObs").value = "";
+  document.getElementById("vCantidad").value = 1;
+  document.getElementById("vHora").value = nowTimeStr();
+  actualizarValorUnitario();
+}
+function cancelarEdicionViaje(){
+  salirEdicionViaje();
+  document.getElementById("viajeAlert").innerHTML = "";
+}
+
+function guardarEdicionViaje(){
+  var v = DB.viajes.filter(function(x){ return x.id===EDIT_VIAJE_ID; })[0];
+  var alertBox = document.getElementById("viajeAlert");
+  if(!v){ salirEdicionViaje(); return; }
+  var remision = (document.getElementById("vRemision").value || "").trim();
+  if(!remision){ alertBox.innerHTML = '<div class="callout danger">Escribe el número de la remisión del proveedor.</div>'; return; }
+  var norm = remision.toLowerCase();
+  var remDup = DB.viajes.filter(function(x){ return x.id!==v.id && (x.remision||"").trim().toLowerCase()===norm; })[0];
+  if(remDup){
+    var cDup = conductorById(remDup.conductorId);
+    if(!confirm("La remisión "+remision+" ya está registrada ("+remDup.fecha+(remDup.hora?" "+remDup.hora:"")+", "+(cDup?cDup.nombre:remDup.conductorId)+"). ¿Deseas guardarla de todas formas?")) return;
+  }
+  var qk = quincenaDeFecha(v.fecha) ? quincenaDeFecha(v.fecha).key : "";
+
+  /* Quincena aprobada: SOLO cambia la remisión, nada más. */
+  if(isQuincenaLocked(v.conductorId, v.fecha)){
+    var antes = v.remision || "";
+    if(antes === remision){ alertBox.innerHTML = '<div class="callout warn">No hay cambios: la remisión es la misma.</div>'; return; }
+    v.remision = remision;
+    logHistorial("viaje", v.id, "remisión (quincena aprobada)", antes||"(vacía)", remision, "Se agregó/modificó la remisión de un viaje de quincena aprobada", qk, v.conductorId);
+    saveDB();
+    salirEdicionViaje();
+    alertBox.innerHTML = '<div class="callout ok">✔ Remisión guardada. Ningún otro dato del viaje fue modificado.</div>';
+    renderViajesRecientes(); renderConsolidados(); renderAnualDashboard();
+    return;
+  }
+
+  /* Quincena no aprobada: edición completa. */
+  var fecha = document.getElementById("vFecha").value;
+  var conductorId = document.getElementById("vConductor").value;
+  var vehiculo = document.getElementById("vVehiculo").value;
+  var rutaCod = document.getElementById("vRuta").value;
+  var cantidad = parseFloat(document.getElementById("vCantidad").value) || 0;
+  var hora = (document.getElementById("vHora").value || "").trim();
+  var obs = document.getElementById("vObs").value;
+  if(!fecha || !conductorId || !vehiculo || !rutaCod || cantidad<=0){ alertBox.innerHTML = '<div class="callout danger">Completa fecha, conductor, vehículo, ruta y una cantidad de viajes mayor a cero.</div>'; return; }
+  if(!hora){ alertBox.innerHTML = '<div class="callout danger">Indica la hora en que se realizó el viaje.</div>'; return; }
+  if(isQuincenaLocked(conductorId, fecha)){ alertBox.innerHTML = '<div class="callout danger">No puedes mover este viaje a una quincena que ya fue aprobada.</div>'; return; }
+  var ruta = rutaByCodigo(rutaCod);
+  var valorUnit = (rutaCod===v.rutaCodigo) ? v.valorUnitario : (ruta ? ruta.valor : 0); /* si no cambia la ruta se conserva el valor con que se registró */
+  var total = cantidad*valorUnit;
+  var cambios = [];
+  function ch(nombre, a, b){ if(String(a)!==String(b)) cambios.push(nombre+": "+a+" → "+b); }
+  ch("fecha", v.fecha, fecha); ch("conductor", v.conductorId, conductorId); ch("vehículo", v.vehiculo, vehiculo);
+  ch("ruta", v.rutaCodigo, rutaCod); ch("hora", v.hora||"", hora); ch("remisión", v.remision||"", remision);
+  ch("cantidad", v.cantidad, cantidad); ch("observación", v.observacion||"", obs);
+  if(!cambios.length){ alertBox.innerHTML = '<div class="callout warn">No hay cambios para guardar.</div>'; return; }
+  v.fecha=fecha; v.conductorId=conductorId; v.vehiculo=vehiculo; v.rutaCodigo=rutaCod; v.hora=hora; v.remision=remision;
+  v.cantidad=cantidad; v.valorUnitario=valorUnit; v.total=total; v.observacion=obs;
+  logHistorial("viaje", v.id, "edición", "", cambios.join(" | "), "", quincenaDeFecha(fecha)?quincenaDeFecha(fecha).key:"", conductorId);
+  saveDB();
+  salirEdicionViaje();
+  alertBox.innerHTML = '<div class="callout ok">✔ Viaje actualizado.</div>';
+  renderViajesRecientes(); renderConsolidados(); renderAnualDashboard();
+}
+
 function eliminarViaje(id){
   var v = DB.viajes.filter(function(x){ return x.id===id; })[0];
   if(!v) return;
@@ -1299,7 +1417,7 @@ function renderViajesRecientes(){
   tbody.innerHTML = rows.map(function(v){
     var c = conductorById(v.conductorId);
     var r = rutaByCodigo(v.rutaCodigo);
-    return '<tr><td>'+v.fecha+'</td><td>'+(v.hora||"—")+'</td><td class="txt">'+(c?c.nombre:v.conductorId)+'</td><td>'+v.vehiculo+'</td><td class="txt">'+(r?r.nombre:v.rutaCodigo)+'</td><td>'+(v.remision?escHtml(v.remision):"—")+'</td><td>'+v.cantidad+'</td><td>'+fmt(v.valorUnitario)+'</td><td>'+fmt(v.total)+'</td><td class="txt">'+(v.observacion||"")+'</td><td><button class="btn sm danger" onclick="eliminarViaje(\''+v.id+'\')">Eliminar</button></td></tr>';
+    return '<tr><td>'+v.fecha+'</td><td>'+(v.hora||"—")+'</td><td class="txt">'+(c?c.nombre:v.conductorId)+'</td><td>'+v.vehiculo+'</td><td class="txt">'+(r?r.nombre:v.rutaCodigo)+'</td><td>'+(v.remision?escHtml(v.remision):"—")+'</td><td>'+v.cantidad+'</td><td>'+fmt(v.valorUnitario)+'</td><td>'+fmt(v.total)+'</td><td class="txt">'+(v.observacion||"")+'</td><td style="white-space:nowrap;"><button class="btn sm" onclick="editarViaje(\''+v.id+'\')">Editar</button> <button class="btn sm danger" onclick="eliminarViaje(\''+v.id+'\')">Eliminar</button></td></tr>';
   }).join("");
 }
 
@@ -1361,8 +1479,8 @@ function renderConsolidados(){
   var tdet = document.querySelector("#tablaDetalleFiltrado tbody");
   tdet.innerHTML = rows.length ? rows.slice().sort(function(a,b){return a.fecha.localeCompare(b.fecha);}).map(function(v){
     var c = conductorById(v.conductorId); var r = rutaByCodigo(v.rutaCodigo);
-    return '<tr><td>'+v.fecha+'</td><td>'+(v.hora||"—")+'</td><td class="txt">'+(c?c.nombre:v.conductorId)+'</td><td>'+v.vehiculo+'</td><td class="txt">'+(r?r.nombre:v.rutaCodigo)+'</td><td>'+(v.remision?escHtml(v.remision):"—")+'</td><td>'+v.cantidad+'</td><td>'+fmt(v.total)+'</td></tr>';
-  }).join("") : '<tr class="empty-row"><td colspan="8">Sin datos para este filtro.</td></tr>';
+    return '<tr><td>'+v.fecha+'</td><td>'+(v.hora||"—")+'</td><td class="txt">'+(c?c.nombre:v.conductorId)+'</td><td>'+v.vehiculo+'</td><td class="txt">'+(r?r.nombre:v.rutaCodigo)+'</td><td>'+(v.remision?escHtml(v.remision):"—")+'</td><td>'+v.cantidad+'</td><td>'+fmt(v.total)+'</td><td><button class="btn sm" onclick="editarViaje(\''+v.id+'\')">Editar</button></td></tr>';
+  }).join("") : '<tr class="empty-row"><td colspan="9">Sin datos para este filtro.</td></tr>';
 }
 
 function guardarPrestamo(){
