@@ -278,8 +278,14 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
   </div>
 
   <div class="card">
-    <h3>Últimos registros <span style="font-weight:400;color:var(--slate);font-size:12px;">(los 40 más recientes)</span></h3>
-    <div class="btn-row"><button class="btn gold" onclick="exportarRegistro()">Exportar todos los viajes a Excel</button></div>
+    <h3>Registros de viajes <span id="rTituloNota" style="font-weight:400;color:var(--slate);font-size:12px;">(los 40 más recientes)</span></h3>
+    <div class="grid3">
+      <div class="field"><label for="rAnio">Año</label><select id="rAnio" onchange="renderViajesRecientes()"></select></div>
+      <div class="field"><label for="rMes">Mes</label><select id="rMes" onchange="renderViajesRecientes()"></select></div>
+      <div class="field"><label for="rConductor">Conductor</label><select id="rConductor" onchange="renderViajesRecientes()"></select></div>
+    </div>
+    <div class="hint" id="rResumen" style="margin:0 0 8px;"></div>
+    <div class="btn-row"><button class="btn" onclick="limpiarFiltroRegistros()">Ver los 40 más recientes</button><button class="btn gold" onclick="exportarRegistro()">Exportar todos los viajes a Excel</button></div>
     <div class="table-wrap"><table class="data" id="tablaViajesRecientes">
       <thead><tr><th>Fecha</th><th>Hora</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Remisión</th><th>Viajes</th><th>Valor unit.</th><th>Total</th><th>Observación</th><th></th></tr></thead>
       <tbody></tbody>
@@ -1410,10 +1416,46 @@ function eliminarViaje(id){
   renderViajesRecientes();
 }
 
+function initFiltroRegistros(){
+  var a = document.getElementById("rAnio"), m = document.getElementById("rMes"), c = document.getElementById("rConductor");
+  if(a.options.length) return;
+  a.innerHTML = "<option value=''>Todos los años</option>";
+  yearsList().forEach(function(y){ var o=document.createElement("option"); o.value=y; o.textContent=y; a.appendChild(o); });
+  m.innerHTML = "<option value=''>Todos (los 40 más recientes)</option>";
+  MESES.forEach(function(n,i){ var o=document.createElement("option"); o.value=i+1; o.textContent=n; m.appendChild(o); });
+}
+function llenarConductoresFiltroRegistros(){
+  var c = document.getElementById("rConductor"), prev = c.value;
+  c.innerHTML = "<option value=''>Todos los conductores</option>";
+  DB.conductores.forEach(function(x){ var o=document.createElement("option"); o.value=x.id; o.textContent=x.nombre; c.appendChild(o); });
+  c.value = prev;
+}
+function limpiarFiltroRegistros(){
+  document.getElementById("rAnio").value = ""; document.getElementById("rMes").value = ""; document.getElementById("rConductor").value = "";
+  renderViajesRecientes();
+}
+
 function renderViajesRecientes(){
+  initFiltroRegistros();
+  var cSel = document.getElementById("rConductor");
+  if(cSel.options.length-1 !== DB.conductores.length) llenarConductoresFiltroRegistros();
+  var anio = document.getElementById("rAnio").value, mes = document.getElementById("rMes").value, cond = cSel.value;
+  var filtrando = !!(anio || mes || cond);
   var tbody = document.querySelector("#tablaViajesRecientes tbody");
-  var rows = DB.viajes.slice().sort(function(a,b){ return (b.createdAt||"").localeCompare(a.createdAt||""); }).slice(0,40);
-  if(rows.length===0){ tbody.innerHTML = '<tr class="empty-row"><td colspan="11">Aún no hay viajes registrados.</td></tr>'; return; }
+  var todos = DB.viajes.filter(function(v){
+    if(anio && String(v.fecha).slice(0,4)!==anio) return false;
+    if(mes && +String(v.fecha).slice(5,7)!==+mes) return false;
+    if(cond && v.conductorId!==cond) return false;
+    return true;
+  });
+  /* Sin filtro: los 40 más recientes (por registro). Con filtro: todos los viajes que cumplan, por fecha descendente. */
+  var rows = filtrando
+    ? todos.sort(function(a,b){ return (b.fecha+" "+(b.hora||"")).localeCompare(a.fecha+" "+(a.hora||"")); })
+    : todos.sort(function(a,b){ return (b.createdAt||"").localeCompare(a.createdAt||""); }).slice(0,40);
+  document.getElementById("rTituloNota").textContent = filtrando ? "(según el filtro)" : "(los 40 más recientes)";
+  var tv = todos.reduce(function(a,v){ return a+(Number(v.cantidad)||0); },0), tt = todos.reduce(function(a,v){ return a+(Number(v.total)||0); },0);
+  document.getElementById("rResumen").textContent = filtrando ? (rows.length+" registro(s) · "+tv+" viaje(s) · total "+fmt(tt)) : "Elige año, mes o conductor para ver todos los viajes de ese periodo.";
+  if(rows.length===0){ tbody.innerHTML = '<tr class="empty-row"><td colspan="11">'+(filtrando?"No hay viajes para este filtro.":"Aún no hay viajes registrados.")+'</td></tr>'; return; }
   tbody.innerHTML = rows.map(function(v){
     var c = conductorById(v.conductorId);
     var r = rutaByCodigo(v.rutaCodigo);
