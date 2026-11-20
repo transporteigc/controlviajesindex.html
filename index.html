@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js"></script>
 <style>
 :root{
@@ -322,6 +323,19 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
       <tbody></tbody>
     </table></div>
   </div>
+
+  <div class="card">
+    <h3>Informe de viajes para el cliente (Excel con membrete)</h3>
+    <p class="hint" style="margin:0 0 8px;">Genera la relación de viajes del periodo que indiques, lista para enviar al cliente y pedirle el Batch correspondiente. No incluye valores de conductores.</p>
+    <div class="grid3">
+      <div class="field"><label for="infDesde">Desde</label><input type="date" id="infDesde"></div>
+      <div class="field"><label for="infHasta">Hasta</label><input type="date" id="infHasta"></div>
+      <div class="field"><label for="infCliente">Cliente</label><input type="text" id="infCliente" value="Cementos Argos S.A."></div>
+    </div>
+    <div class="field"><label style="display:flex;gap:8px;align-items:center;font-weight:400;"><input type="checkbox" id="infSoloBatch" checked> Solo viajes de rutas que generan Batch (Cementos Argos)</label></div>
+    <div class="btn-row"><button class="btn gold" onclick="exportarInformeCliente()">⬇ Descargar informe para el cliente (Excel)</button></div>
+    <div id="infMsg"></div>
+  </div>
 </section>
 
 <section class="panel" id="panel-consolidados">
@@ -489,6 +503,25 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
   <div class="card">
     <h3>6. Detalle por remisión</h3>
     <div id="facDetalle"></div>
+  </div>
+
+  <div class="card" id="cardCruce">
+    <h3>7. Cruce Batch vs archivo externo de control (peso por viaje)</h3>
+    <p class="hint" style="margin:0 0 8px;">Carga el archivo externo de control de la empresa (con número de remisión y peso). Se cruza remisión por remisión con el Batch del corte elegido arriba, se muestra la diferencia de peso y se propone un peso ajustado: ningún viaje puede pasar del límite y el total de cada número de batch nunca supera el total del Batch. Puedes corregir el peso ajustado a mano.</p>
+    <div class="grid3">
+      <div class="field"><label for="cruArchivo">Archivo externo (Excel/CSV)</label><input type="file" id="cruArchivo" accept=".xlsx,.xls,.csv" onchange="cruceCargar(this)"></div>
+      <div class="field"><label for="cruLimite">Límite por viaje (kg)</label><input type="number" id="cruLimite" value="34990" step="10" onchange="cruceReset()"></div>
+      <div class="field"><label for="cruUnidadExt">Unidad del peso en el archivo externo</label><select id="cruUnidadExt" onchange="cruceReset()"><option value="kg">Kilogramos</option><option value="ton">Toneladas</option></select></div>
+    </div>
+    <div class="grid3" id="cruCols" style="display:none;">
+      <div class="field"><label for="cruColRem">Columna de remisión</label><select id="cruColRem" onchange="cruceReset()"></select></div>
+      <div class="field"><label for="cruColPeso">Columna de peso</label><select id="cruColPeso" onchange="cruceReset()"></select></div>
+      <div class="field"><label>&nbsp;</label><div class="btn-row" style="margin:0;"><button class="btn" onclick="cruceReset(true)">↺ Recalcular automático</button><button class="btn gold" onclick="cruceExportar()">Exportar cruce a Excel</button></div></div>
+    </div>
+    <div class="hint" style="margin:0 0 8px;">El peso del Batch se toma con la unidad elegida en «Unidad del peso en el Batch» de la parte superior. Los ajustes manuales se conservan mientras no recargues la página.</div>
+    <div id="cruMsg"></div>
+    <div id="cruResumen"></div>
+    <div id="cruTabla"></div>
   </div>
 </section>
 
@@ -3895,5 +3928,153 @@ function init(){
 init();
 </script>
 
+
+<script>
+/* ===== Informe de viajes para el cliente (Excel con membrete, ExcelJS) ===== */
+(function(){ var d=new Date(), y=d.getFullYear(), m=("0"+(d.getMonth()+1)).slice(-2);
+  var a=document.getElementById("infDesde"), b=document.getElementById("infHasta");
+  if(a) a.value=y+"-"+m+"-01"; if(b) b.value=nowDateStr(); })();
+function infMsg(t,c){ document.getElementById("infMsg").innerHTML='<div class="callout '+(c||"warn")+'">'+t+'</div>'; }
+async function exportarInformeCliente(){
+  var d=document.getElementById("infDesde").value, h=document.getElementById("infHasta").value;
+  var cliente=document.getElementById("infCliente").value.trim(), solo=document.getElementById("infSoloBatch").checked;
+  if(!d||!h||d>h){ infMsg("Indica un periodo válido (desde ≤ hasta)."); return; }
+  if(typeof ExcelJS==="undefined"){ infMsg("No se pudo cargar la librería de Excel. Verifica tu conexión a internet e intenta de nuevo."); return; }
+  var lista=DB.viajes.filter(function(v){ return v.fecha>=d && v.fecha<=h && (!solo || concRutaTieneBatch(v.rutaCodigo)); })
+    .sort(function(a,b){ return (a.fecha+(a.hora||"")).localeCompare(b.fecha+(b.hora||"")); });
+  if(!lista.length){ infMsg("No hay viajes en ese periodo con los filtros elegidos."); return; }
+  var NAVY="FF002E42", NAVY2="FF0B4258", GOLD="FFCE8813", CREAM="FFFAF7EF", LINE="FFD8D2C1";
+  var wb=new ExcelJS.Workbook(); wb.creator="Transporte IGC S.A.S.";
+  var ws=wb.addWorksheet("Relación de viajes",{views:[{showGridLines:false}],pageSetup:{orientation:"landscape",paperSize:9,fitToPage:true,fitToWidth:1,fitToHeight:0}});
+  var W=[6,12,9,13,30,42,20,9,18]; ws.columns=W.map(function(w){return {width:w};});
+  var fillN={type:"pattern",pattern:"solid",fgColor:{argb:NAVY}};
+  for(var r=1;r<=4;r++){ ws.getRow(r).height=24; for(var c=1;c<=9;c++) ws.getRow(r).getCell(c).fill=fillN; }
+  ws.getRow(5).height=5; for(var c2=1;c2<=9;c2++) ws.getRow(5).getCell(c2).fill={type:"pattern",pattern:"solid",fgColor:{argb:GOLD}};
+  try{
+    var img=document.querySelector(".brand img"), src=img.src, hh=84, ww=Math.round(hh*((img.naturalWidth||640)/(img.naturalHeight||416)));
+    var id=wb.addImage({base64:src.split(",")[1],extension:"png"});
+    ws.addImage(id,{tl:{col:0.15,row:0.1},ext:{width:ww,height:hh}});
+  }catch(e){}
+  ws.mergeCells("C1:I1"); ws.getCell("C1").value="TRANSPORTE IGC S.A.S."; ws.getCell("C1").font={name:"Calibri",size:20,bold:true,color:{argb:"FFFFFFFF"}}; ws.getCell("C1").alignment={vertical:"middle"};
+  ws.mergeCells("C2:I2"); ws.getCell("C2").value="Tu carga segura · transporteigcsas@gmail.com"; ws.getCell("C2").font={size:11,italic:true,color:{argb:"FFE8A93A"}};
+  ws.mergeCells("C3:I3"); ws.getCell("C3").value="RELACIÓN DE VIAJES PARA CONCILIACIÓN DE BATCH"; ws.getCell("C3").font={size:14,bold:true,color:{argb:"FFFFFFFF"}};
+  var fd=function(x){ return x.slice(8,10)+"/"+x.slice(5,7)+"/"+x.slice(0,4); };
+  ws.mergeCells("C4:I4"); ws.getCell("C4").value="Periodo: "+fd(d)+" al "+fd(h)+"   ·   Generado: "+fd(nowDateStr()); ws.getCell("C4").font={size:11,color:{argb:"FFFFFFFF"}};
+  ws.mergeCells("A7:I7"); ws.getCell("A7").value="Cliente: "+(cliente||"—"); ws.getCell("A7").font={size:12,bold:true,color:{argb:NAVY}}; ws.getRow(7).height=22; ws.getCell("A7").alignment={vertical:"middle"};
+  var HR=8, heads=["N.º","Fecha","Hora","Vehículo","Conductor","Ruta","Remisión proveedor","Viajes","Batch (cliente)"];
+  var hr=ws.getRow(HR); hr.height=26;
+  heads.forEach(function(t,i){ var c=hr.getCell(i+1); c.value=t; c.font={bold:true,color:{argb:"FFFFFFFF"},size:11}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:NAVY2}}; c.alignment={horizontal:"center",vertical:"middle",wrapText:true}; c.border={top:{style:"thin",color:{argb:LINE}},bottom:{style:"thin",color:{argb:LINE}},left:{style:"thin",color:{argb:LINE}},right:{style:"thin",color:{argb:LINE}}}; });
+  var tot=0;
+  lista.forEach(function(v,i){
+    var co=conductorById(v.conductorId), ru=rutaByCodigo(v.rutaCodigo), row=ws.getRow(HR+1+i), cant=Number(v.cantidad)||1; tot+=cant;
+    var dt=new Date(+v.fecha.slice(0,4),+v.fecha.slice(5,7)-1,+v.fecha.slice(8,10));
+    var vals=[i+1,dt,v.hora||"",v.vehiculo||"",co?co.nombre:v.conductorId,ru?ru.nombre:v.rutaCodigo,String(v.remision||""),cant,""];
+    vals.forEach(function(x,j){ var c=row.getCell(j+1); c.value=x; c.font={size:10.5};
+      c.alignment={vertical:"middle",horizontal:(j===4||j===5)?"left":"center",wrapText:j===5};
+      c.border={top:{style:"thin",color:{argb:LINE}},bottom:{style:"thin",color:{argb:LINE}},left:{style:"thin",color:{argb:LINE}},right:{style:"thin",color:{argb:LINE}}};
+      if(i%2===1) c.fill={type:"pattern",pattern:"solid",fgColor:{argb:CREAM}};
+      if(j===1) c.numFmt="dd/mm/yyyy"; });
+    row.height=20;
+  });
+  var tr=ws.getRow(HR+lista.length+1); tr.height=24;
+  ws.mergeCells(HR+lista.length+1,1,HR+lista.length+1,7);
+  tr.getCell(1).value="TOTAL DE VIAJES"; tr.getCell(1).alignment={horizontal:"right",vertical:"middle"}; tr.getCell(8).value=tot; tr.getCell(8).alignment={horizontal:"center",vertical:"middle"};
+  for(var k=1;k<=9;k++){ var tc=tr.getCell(k); tc.font={bold:true,color:{argb:NAVY},size:11}; tc.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFF3E3BF"}}; }
+  var nr=HR+lista.length+3; ws.mergeCells("A"+nr+":I"+(nr+1));
+  ws.getCell("A"+nr).value="Por favor, remitir el Batch correspondiente a los viajes aquí relacionados para su conciliación y facturación.";
+  ws.getCell("A"+nr).font={italic:true,size:10.5,color:{argb:"FF5C6B74"}}; ws.getCell("A"+nr).alignment={wrapText:true,vertical:"top"};
+  ws.views=[{showGridLines:false,state:"frozen",ySplit:HR}];
+  ws.pageSetup.printTitlesRow=HR+":"+HR;
+  var buf=await wb.xlsx.writeBuffer();
+  var url=URL.createObjectURL(new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
+  var a=document.createElement("a"); a.href=url; a.download="relacion-viajes-IGC-"+d+"_a_"+h+".xlsx"; document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(url);},2000);
+  infMsg("✔ Informe generado con "+lista.length+" viajes ("+tot+" en total).","ok");
+}
+
+/* ===== Cruce Batch vs archivo externo + ajuste de pesos ===== */
+var CRU={rows:[],hdr:0,man:{},calc:null};
+function cruKg(n){ return Math.round(n||0).toLocaleString("es-CO"); }
+function cruNum(x){ if(typeof x==="number") return x; var t=String(x==null?"":x).trim().replace(/\s/g,""); if(!t) return NaN;
+  if(/^\d{1,3}(\.\d{3})+(,\d+)?$/.test(t)) t=t.replace(/\./g,"").replace(",","."); else if(/^\d+,\d+$/.test(t)) t=t.replace(",","."); else t=t.replace(/,/g,"");
+  var n=Number(t); return isNaN(n)?NaN:n; }
+function cruMsg(t,c){ document.getElementById("cruMsg").innerHTML=t?'<div class="callout '+(c||"warn")+'">'+t+'</div>':""; }
+function cruceCargar(inp){
+  var f=inp.files&&inp.files[0]; if(!f) return;
+  var rd=new FileReader();
+  rd.onload=function(e){ try{
+    var wb=XLSX.read(new Uint8Array(e.target.result),{type:"array"}), best=null;
+    wb.SheetNames.forEach(function(n){ if(best) return; var rows=XLSX.utils.sheet_to_json(wb.Sheets[n],{header:1,raw:true,defval:""});
+      for(var i=0;i<Math.min(rows.length,40);i++){ if(rows[i].some(function(c){ return concNormTexto(c).indexOf("remision")>=0; })){ best={rows:rows,hdr:i}; break; } } });
+    if(!best){ var n0=wb.SheetNames[0]; best={rows:XLSX.utils.sheet_to_json(wb.Sheets[n0],{header:1,raw:true,defval:""}),hdr:0}; }
+    CRU.rows=best.rows; CRU.hdr=best.hdr; CRU.man={};
+    var H=CRU.rows[CRU.hdr]||[], opts=H.map(function(h,i){ return '<option value="'+i+'">'+escHtml(String(h||("Columna "+(i+1))))+'</option>'; }).join("");
+    var sr=document.getElementById("cruColRem"), sp=document.getElementById("cruColPeso"); sr.innerHTML=opts; sp.innerHTML=opts;
+    var iR=H.findIndex(function(h){ return concNormTexto(h).indexOf("remision")>=0; });
+    var iP=H.findIndex(function(h){ var t=concNormTexto(h); return t.indexOf("peso")>=0 && t.indexOf("neto")>=0; }); if(iP<0) iP=H.findIndex(function(h){ return concNormTexto(h).indexOf("peso")>=0; });
+    if(iR>=0) sr.value=iR; if(iP>=0) sp.value=iP;
+    document.getElementById("cruCols").style.display="";
+    if(iR<0||iP<0) cruMsg("No pude identificar automáticamente las columnas: elige la de remisión y la de peso.","warn"); else cruMsg("");
+    cruceRender();
+  }catch(err){ cruMsg("No se pudo leer el archivo: "+escHtml(err.message)); } };
+  rd.readAsArrayBuffer(f);
+}
+function cruceReset(limpiar){ if(limpiar) CRU.man={}; cruceRender(); }
+function cruceCalc(){
+  var q=facPeriodo(); if(!q||!CRU.rows.length) return null;
+  var L=Number(document.getElementById("cruLimite").value)||34990;
+  var kgB=(document.getElementById("facUnidad").value==="kg"), kgE=(document.getElementById("cruUnidadExt").value==="kg");
+  var iR=+document.getElementById("cruColRem").value, iP=+document.getElementById("cruColPeso").value;
+  var ext={}; for(var i=CRU.hdr+1;i<CRU.rows.length;i++){ var row=CRU.rows[i], rem=String(row[iR]==null?"":row[iR]).trim(), pe=cruNum(row[iP]); if(!rem||isNaN(pe)) continue;
+    var k=concNormRem(rem); ext[k]=(ext[k]||0)+pe*(kgE?1:1000); }
+  var filas=facFilasQuincena(q).map(function(x){ var f=x.f, pb=Number(f.peso); pb=isNaN(pb)?0:pb*(kgB?1:1000);
+    var e=ext[concNormRem(f.rem)];
+    return {key:f.batch+"|"+f.rem,batch:String(f.batch),rem:f.rem,fecha:x.fecha,ruta:(f.origen||"")+" → "+(f.destino||""),pb:Math.round(pb),pe:e==null?null:Math.round(e),adj:0,man:false,exceso:pb>L}; });
+  var grupos={};
+  filas.forEach(function(r){ (grupos[r.batch]=grupos[r.batch]||{batch:r.batch,filas:[],total:0}).filas.push(r); grupos[r.batch].total+=r.pb; });
+  Object.keys(grupos).forEach(function(b){ var g=grupos[b], pool=g.total, autos=[];
+    g.filas.forEach(function(r){ if(CRU.man.hasOwnProperty(r.key)){ r.adj=CRU.man[r.key]; r.man=true; pool-=r.adj; } else { r.adj=Math.min(r.pb,L); autos.push(r); } });
+    var ex=pool-autos.reduce(function(a,r){return a+r.adj;},0);
+    if(ex>0){ /* reparte el excedente: primero a viajes cuyo peso externo es mayor, luego a cualquiera con espacio */
+      autos.filter(function(r){return r.pe!=null&&r.pe>r.adj;}).sort(function(a,b){return (b.pe-b.adj)-(a.pe-a.adj);}).forEach(function(r){ var a=Math.min(L-r.adj,r.pe-r.adj,ex); if(a>0){ r.adj+=a; ex-=a; } });
+      autos.slice().sort(function(a,b){return (L-b.adj)-(L-a.adj);}).forEach(function(r){ var a=Math.min(L-r.adj,ex); if(a>0){ r.adj+=a; ex-=a; } });
+    } else if(ex<0){ autos.slice().sort(function(a,b){return b.adj-a.adj;}).forEach(function(r){ var a=Math.min(r.adj,-ex); r.adj-=a; ex+=a; }); }
+    g.sinAsignar=Math.max(0,ex); g.ajustado=g.filas.reduce(function(a,r){return a+r.adj;},0); });
+  return {L:L,filas:filas,grupos:grupos};
+}
+function cruceRender(){
+  var C=CRU.calc=cruceCalc(), T=document.getElementById("cruTabla"), S=document.getElementById("cruResumen");
+  if(!C){ T.innerHTML=""; S.innerHTML=""; return; }
+  if(!C.filas.length){ S.innerHTML=""; T.innerHTML='<p class="hint">No hay remisiones del Batch en el corte elegido.</p>'; return; }
+  var sinExt=C.filas.filter(function(r){return r.pe==null;}).length, exc=C.filas.filter(function(r){return r.exceso;}).length;
+  var gs=Object.keys(C.grupos).sort();
+  S.innerHTML='<div class="callout '+(exc||sinExt?'warn':'ok')+'"><b>'+C.filas.length+' viajes</b> · '+exc+' con peso de Batch por encima de '+cruKg(C.L)+' kg · '+sinExt+' sin coincidencia en el archivo externo.</div>'+
+    '<div class="table-wrap"><table class="data"><thead><tr><th>Batch</th><th>Viajes</th><th>Total Batch (kg)</th><th>Total ajustado (kg)</th><th>Diferencia</th><th>Estado</th></tr></thead><tbody>'+
+    gs.map(function(b){ var g=C.grupos[b], d=g.ajustado-g.total, ok=g.ajustado<=g.total;
+      return '<tr><td><b>'+escHtml(b)+'</b></td><td>'+g.filas.length+'</td><td>'+cruKg(g.total)+'</td><td>'+cruKg(g.ajustado)+'</td><td>'+cruKg(d)+'</td><td class="txt">'+(g.sinAsignar>0?'<span class="pill rechazada">Quedan '+cruKg(g.sinAsignar)+' kg sin lugar (todos los viajes en el límite)</span>':(ok&&d===0?'<span class="pill aprobada">✔ Cuadra con el Batch</span>':'<span class="pill revision">Por debajo del total</span>'))+'</td></tr>'; }).join("")+'</tbody></table></div>';
+  T.innerHTML='<h3 style="margin-top:14px;">Detalle por viaje</h3><div class="table-wrap"><table class="data"><thead><tr><th>Batch</th><th>Remisión</th><th>Fecha</th><th>Origen → Destino</th><th>Peso Batch (kg)</th><th>Peso externo (kg)</th><th>Dif. Batch − externo</th><th>¿Batch &gt; '+cruKg(C.L)+'?</th><th>Peso ajustado (kg, editable)</th><th>Ajuste</th></tr></thead><tbody>'+
+    C.filas.map(function(r,i){ var dif=r.pe==null?null:r.pb-r.pe, aj=r.adj-r.pb;
+      return '<tr><td>'+escHtml(r.batch)+'</td><td>'+escHtml(r.rem)+'</td><td>'+escHtml(r.fecha||"")+'</td><td class="txt">'+escHtml(r.ruta)+'</td><td>'+cruKg(r.pb)+'</td><td>'+(r.pe==null?'<span class="pill revision">Sin dato</span>':cruKg(r.pe))+'</td><td>'+(dif==null?'—':'<b style="color:'+(dif===0?'inherit':(dif>0?'#A3372B':'#2E6B4C'))+'">'+(dif>0?'+':'')+cruKg(dif)+'</b>')+'</td><td class="txt">'+(r.exceso?'<span class="pill rechazada">▲ Sí, excede</span>':'<span class="pill aprobada">No</span>')+'</td>'+
+      '<td><input type="number" style="width:110px;" step="10" value="'+r.adj+'" onchange="cruceEditar('+i+',this)">'+(r.man?' <span class="pill revision" title="Corregido a mano">Manual</span>':'')+'</td><td>'+(aj===0?'—':(aj>0?'+':'')+cruKg(aj))+'</td></tr>'; }).join("")+'</tbody></table></div>';
+}
+function cruceEditar(i,inp){
+  var C=CRU.calc, r=C.filas[i], v=Math.round(Number(inp.value));
+  if(isNaN(v)||v<0){ cruMsg("Peso no válido."); cruceRender(); return; }
+  if(v>C.L){ cruMsg("⚠ El peso de un viaje no puede pasar de "+cruKg(C.L)+" kg. Se mantuvo el valor anterior."); cruceRender(); return; }
+  var prev=CRU.man.hasOwnProperty(r.key)?CRU.man[r.key]:undefined; CRU.man[r.key]=v;
+  var g=C.grupos[r.batch], sumMan=g.filas.reduce(function(a,x){ return a+(CRU.man.hasOwnProperty(x.key)?CRU.man[x.key]:0); },0);
+  if(sumMan>g.total){ if(prev===undefined) delete CRU.man[r.key]; else CRU.man[r.key]=prev;
+    cruMsg("⚠ Con ese valor el batch "+escHtml(r.batch)+" pasaría su total ("+cruKg(g.total)+" kg). Se mantuvo el valor anterior."); cruceRender(); return; }
+  cruMsg(""); cruceRender();
+}
+function cruceExportar(){
+  var C=CRU.calc; if(!C||!C.filas.length){ alert("Primero carga el archivo externo."); return; }
+  var det=C.filas.map(function(r){ return {Batch:r.batch,Remision:r.rem,Fecha:r.fecha||"","Origen-Destino":r.ruta,"Peso Batch (kg)":r.pb,"Peso externo (kg)":r.pe==null?"":r.pe,"Dif Batch-externo (kg)":r.pe==null?"":r.pb-r.pe,"Batch excede limite":r.exceso?"SI":"NO","Peso ajustado (kg)":r.adj,"Ajuste (kg)":r.adj-r.pb,Manual:r.man?"SI":""}; });
+  var res=Object.keys(C.grupos).sort().map(function(b){ var g=C.grupos[b]; return {Batch:b,Viajes:g.filas.length,"Total Batch (kg)":g.total,"Total ajustado (kg)":g.ajustado,"Sin asignar (kg)":g.sinAsignar}; });
+  descargarLibro(libroDesde([hojaDesde("Cruce por viaje",det),hojaDesde("Resumen por batch",res)]),"cruce-batch-vs-externo-"+nowDateStr()+".xlsx");
+}
+/* El cruce se recalcula al cambiar de corte o al refrescar Facturación */
+(function(){ var orig=renderFacturacion; renderFacturacion=function(){ orig.apply(this,arguments); if(CRU.rows.length) cruceRender(); };
+  if(typeof TAB_REFRESH!=="undefined") TAB_REFRESH.facturacion=renderFacturacion; })();
+</script>
 </body>
 </html>
