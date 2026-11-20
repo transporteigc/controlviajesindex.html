@@ -157,6 +157,37 @@ table.data tbody tr:hover{background:var(--cream);}
 .cov-day.gap{background:var(--red-bg);color:var(--red);font-weight:700;border:1px solid #E9C4BE;}
 .cov-day.over{background:#D98E04;color:#fff;font-weight:700;}
 .cov-day.pend{background:#EEF1F3;color:#8A98A0;}
+/* Historial de batch: calendario grande, interactivo y con alertas de pendientes */
+.cov-mes{min-width:360px;}
+.cov-grid{grid-template-columns:repeat(7,46px);gap:5px;}
+.cov-day{position:relative;height:46px;font-size:13px;border-radius:9px;cursor:pointer;transition:transform .12s ease, box-shadow .12s ease;user-select:none;}
+.cov-day:hover{transform:scale(1.12);box-shadow:0 4px 12px rgba(0,46,66,.28);z-index:3;}
+.cov-day.has-pend{box-shadow:inset 0 0 0 3px #C62828;}
+.cov-day.per{outline:3px solid var(--gold);outline-offset:1px;}
+.cov-day.sel{outline:3px solid var(--navy);outline-offset:2px;transform:scale(1.12);z-index:4;}
+.cov-day .b{position:absolute;top:-8px;right:-8px;min-width:21px;height:21px;padding:0 5px;border-radius:11px;background:#C62828;color:#fff;font-size:12px;font-weight:700;display:flex;align-items:center;justify-content:center;border:2px solid #fff;animation:covPulse 1.8s infinite;}
+@keyframes covPulse{0%{box-shadow:0 0 0 0 rgba(198,40,40,.55);}70%{box-shadow:0 0 0 9px rgba(198,40,40,0);}100%{box-shadow:0 0 0 0 rgba(198,40,40,0);}}
+.cov-mes h4{font-size:15px;display:flex;align-items:center;gap:8px;}
+.cov-mes h4 .mb{background:#C62828;color:#fff;font-size:11px;padding:2px 8px;border-radius:10px;font-weight:600;}
+.cov-banner{display:flex;gap:16px;align-items:flex-start;border-radius:14px;padding:18px 22px;margin:6px 0 16px;}
+.cov-banner.bad{background:#FDECEA;border:2px solid #C62828;color:#5a1710;}
+.cov-banner.good{background:#E7F4EC;border:2px solid #2E8B57;color:#1c4230;}
+.cov-banner .cov-ico{font-size:40px;line-height:1;}
+.cov-banner .cov-t{font-family:'Space Grotesk',sans-serif;font-size:21px;font-weight:700;margin-bottom:4px;}
+.cov-banner .cov-s{font-size:13.5px;margin-bottom:10px;}
+.cov-chips{display:flex;flex-wrap:wrap;gap:8px;}
+.cov-chip{background:#fff;border:2px solid #C62828;color:#7a1f16;border-radius:999px;padding:8px 14px;font-size:13px;cursor:pointer;font-family:'Inter',sans-serif;transition:transform .12s,background .12s;}
+.cov-chip:hover{transform:translateY(-2px);background:#FFF4F2;}
+.cov-chip.on{background:#C62828;color:#fff;}
+.cov-chip.okc{border-color:#2E8B57;color:#1c4230;}
+.cov-chip.okc:hover{background:#EAF6EF;}
+.cov-chip.okc.on{background:#2E8B57;color:#fff;}
+.cov-chip b{margin-left:4px;}
+.cov-detalle{background:#fff;border:2px solid var(--navy);border-radius:14px;padding:16px 20px;margin:0 0 16px;box-shadow:0 6px 18px rgba(0,46,66,.12);}
+.cov-detalle h4{margin:0 0 8px;font-size:18px;color:var(--navy);text-transform:capitalize;}
+.cov-alerta{background:#FDECEA;border-left:6px solid #C62828;border-radius:8px;padding:12px 15px;font-size:14.5px;margin:10px 0;color:#5a1710;}
+.cov-ayuda{background:var(--blue-bg);border:1px dashed #9DB9C8;border-radius:12px;padding:12px 16px;font-size:13px;margin:0 0 16px;color:#123246;line-height:1.6;}
+@media (max-width:640px){.cov-grid{grid-template-columns:repeat(7,40px);} .cov-day{height:40px;} .cov-mes{min-width:0;} .cov-banner{flex-direction:column;}}
 .cov-leyenda{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--slate);margin:8px 0;}
 .cov-leyenda span i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-2px;}
 
@@ -358,10 +389,8 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
     <h3>1. Cargar archivo del cliente</h3>
     <div class="grid3">
       <div class="field"><label for="concArchivo">Excel con la hoja «Batch»</label><input type="file" id="concArchivo" accept=".xlsx,.xls,.csv" onchange="concCargarArchivo(this)"></div>
-      <div class="field"><label for="concDesde">Viajes desde (fecha)</label><input type="date" id="concDesde" onchange="renderConciliacion()"></div>
-      <div class="field"><label for="concHasta">Viajes hasta (fecha)</label><input type="date" id="concHasta" onchange="renderConciliacion()"></div>
     </div>
-    <div class="hint">Al cargar un archivo se revisa primero (todavía no se guarda). Luego indicas el periodo que cubre y lo guardas: queda en Google Sheets junto con su periodo y no tienes que volver a cargarlo. «Viajes desde/hasta» solo filtra los viajes de la plataforma que se cruzan con los batch guardados.</div>
+    <div class="hint">Al cargar un archivo se revisa primero (todavía no se guarda). Luego indicas el periodo que cubre y lo guardas: queda en Google Sheets junto con su periodo y no tienes que volver a cargarlo. Para ver un periodo concreto usa los filtros de la sección 2.</div>
     <div id="concGuardarBox" style="display:none;margin-top:12px;">
       <h3 style="margin-top:6px;">Periodo que cubre este archivo</h3>
       <div class="grid3">
@@ -378,6 +407,13 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
   <div id="concMetricas"></div>
   <div class="card" id="concControles" style="display:none;">
     <h3>2. Viajes de la plataforma y su batch</h3>
+    <div class="grid3">
+      <div class="field"><label for="concPeriodo">Periodo de batch</label><select id="concPeriodo" onchange="concPeriodoCambio()"></select></div>
+      <div class="field"><label for="concDesde">Viajes desde (fecha)</label><input type="date" id="concDesde" onchange="concFechasCambio()"></div>
+      <div class="field"><label for="concHasta">Viajes hasta (fecha)</label><input type="date" id="concHasta" onchange="concFechasCambio()"></div>
+    </div>
+    <div class="btn-row" style="margin:0 0 4px;"><button class="btn" onclick="concLimpiarFechas()">Ver todos los periodos</button></div>
+    <div id="concRangoInfo" class="hint" style="margin:0 0 12px;"></div>
     <div class="grid3">
       <div class="field"><label for="concFiltro">Mostrar</label><select id="concFiltro" onchange="renderConciliacion()"><option value="todos">Todos los viajes</option><option value="con">Solo con batch</option><option value="sin">Solo sin batch (incluye parciales)</option><option value="multi">Solo viajes con 2+ remisiones</option><option value="otro">Solo otro cliente (sin batch por ruta)</option></select></div>
       <div class="field"><label for="concBuscar">Buscar (remisión, batch, placa, conductor)</label><input type="text" id="concBuscar" oninput="renderConciliacion()" autocomplete="off"></div>
@@ -3082,6 +3118,22 @@ function concCobertura(){
 }
 function concDiasEntre(a,b){ var A=a.split("-"), B=b.split("-"); return Math.round((Date.UTC(+B[0],+B[1]-1,+B[2])-Date.UTC(+A[0],+A[1]-1,+A[2]))/86400000)+1; }
 
+/* ===== Historial interactivo: selección de día / periodo ===== */
+var CONC_HIST = {dia:"", per:""}, CONC_HIST_GRUPOS = [];
+function concHistDia(iso){ CONC_HIST.dia = (CONC_HIST.dia===iso ? "" : iso); CONC_HIST.per = ""; concRenderHistorial(); concHistScroll(); }
+function concHistPeriodo(i){ CONC_HIST.per = (CONC_HIST.per===i ? "" : i); CONC_HIST.dia = ""; concRenderHistorial(); concHistScroll(); }
+function concHistCerrar(){ CONC_HIST = {dia:"", per:""}; concRenderHistorial(); }
+function concHistScroll(){ var e = document.getElementById("covDetalle"); if(e && e.scrollIntoView) e.scrollIntoView({behavior:"smooth", block:"nearest"}); }
+function concTablaPendItems(items, max){
+  max = max || 60;
+  return '<div class="table-wrap"><table class="data"><thead><tr><th>Fecha</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Remisión pendiente de batch</th><th>Estado</th></tr></thead><tbody>' +
+    items.slice(0,max).map(function(x){
+      var c = conductorById(x.v.conductorId), r = rutaByCodigo(x.v.rutaCodigo);
+      var rem = x.estado==="sinrem" ? '<i>(el viaje no tiene remisión)</i>' : x.faltan.map(function(p){ return escHtml(p.rem); }).join('<br>');
+      var est = x.estado==="parcial" ? '<span class="pill rechazada">◐ Parcial</span>' : x.estado==="sinrem" ? '<span class="pill revision">Sin remisión</span>' : '<span class="pill rechazada">✖ Sin batch</span>';
+      return '<tr><td>'+x.v.fecha+'</td><td class="txt">'+escHtml(c?c.nombre:x.v.conductorId)+'</td><td>'+escHtml(x.v.vehiculo||"")+'</td><td class="txt">'+escHtml(r?r.nombre:x.v.rutaCodigo)+'</td><td class="txt"><b>'+rem+'</b></td><td class="txt">'+est+'</td></tr>';
+    }).join("") + '</tbody></table></div>' + (items.length>max ? '<div class="hint">Se muestran '+max+' de '+items.length+'.</div>' : '');
+}
 function concRenderHistorial(){
   var el = document.getElementById("concHistorial"); if(!el) return;
   var lotes = (DB.batchLotes||[]).slice().sort(function(a,b){ return a.desde.localeCompare(b.desde) || a.hasta.localeCompare(b.hasta); });
@@ -3128,32 +3180,90 @@ function concRenderHistorial(){
     htmlHuecos += '<div class="callout warn">Último día cubierto: <b>'+concFmtFechaCorta(cov.max)+'</b>. Pendiente por facturar desde el '+concFmtFechaCorta(concSumarDias(cov.max,1))+' hasta hoy ('+concDiasEntre(concSumarDias(cov.max,1),cov.hoy)+' día(s)).</div>';
   }
 
+  /* Pendientes por facturar (viajes de rutas Argos sin batch), por periodo y por día */
+  var pend = CONC ? concPendientesDatos() : [], pendDia = {}, totV = 0, totR = 0, totSR = 0, iniV = cov.min, finV = cov.finVista;
+  CONC_HIST_GRUPOS = pend;
+  pend.forEach(function(g, gi){
+    totV += g.items.length; totR += g.nRem; totSR += g.nSinRem;
+    g.items.forEach(function(x){ (pendDia[x.v.fecha] = pendDia[x.v.fecha] || []).push({x:x, g:g, gi:gi}); if(x.v.fecha<iniV) iniV = x.v.fecha; if(x.v.fecha>finV) finV = x.v.fecha; });
+  });
+  var gsel = (CONC_HIST.per!=="" && pend[CONC_HIST.per]) ? pend[CONC_HIST.per] : null;
+  var plural = function(n, a, b){ return n+' '+(n===1?a:b); };
+  var okPers = [];
+  pend.forEach(function(g, gi){ if(g.ok) okPers.push({g:g, gi:gi}); });
+  var okChips = okPers.map(function(o){ var g = o.g; return '<button type="button" class="cov-chip okc'+(gsel===g?' on':'')+'" onclick="concHistPeriodo('+o.gi+')">✅ '+escHtml(g.titulo)+' · '+concFmtFechaCorta(g.desde)+' → '+concFmtFechaCorta(g.hasta)+' <b>facturado</b></button>'; }).join("");
+
+  var chips = pend.map(function(g, gi){
+    if(!g.items.length) return "";
+    var t = g.fuera ? '📭 Fuera de los periodos de Batch' : '📅 '+escHtml(g.titulo)+' · '+concFmtFechaCorta(g.desde)+' → '+concFmtFechaCorta(g.hasta);
+    return '<button type="button" class="cov-chip'+(gsel===g?' on':'')+'" onclick="concHistPeriodo('+gi+')">'+t+' <b>'+plural(g.items.length,'pendiente','pendientes')+'</b></button>';
+  }).join("");
+  var banner = totV
+    ? '<div class="cov-banner bad"><div class="cov-ico">⚠️</div><div><div class="cov-t">¡Ojo! Tienes '+plural(totV,'viaje pendiente','viajes pendientes')+' por facturar</div>' +
+      '<div class="cov-s">'+plural(totR,'remisión sin batch','remisiones sin batch')+(totSR?' · '+plural(totSR,'viaje sin remisión registrada','viajes sin remisión registrada'):'')+'. Toca un periodo o un día con globo rojo en el calendario para ver cuáles son.</div>' +
+      '<div class="cov-chips">'+chips+'</div></div></div>'
+    : '<div class="cov-banner good"><div class="cov-ico">✅</div><div><div class="cov-t">¡Todo OK! No tienes nada pendiente por facturar</div><div class="cov-s">Todos los viajes de rutas de Cementos Argos registrados en la plataforma tienen su número de batch: todo fue facturado.</div>'+(okChips?'<div class="cov-chips">'+okChips+'</div>':'')+'</div></div>';
+
+  if(totV && okPers.length) banner += '<div class="cov-banner good" style="padding:12px 18px;margin-top:-6px;"><div class="cov-ico" style="font-size:28px;">✅</div><div><div class="cov-t" style="font-size:16px;margin-bottom:8px;">Periodos ya facturados: todo con batch</div><div class="cov-chips">'+okChips+'</div></div></div>';
+  var detalle = "";
+  if(CONC_HIST.dia){
+    var iso0 = CONC_HIST.dia, ls0 = cov.cubre[iso0], pd = pendDia[iso0] || [], nv0 = cov.viajesDia[iso0] || 0, pp = iso0.split("-");
+    var nombre = new Date(Date.UTC(+pp[0],+pp[1]-1,+pp[2])).toLocaleDateString("es-CO",{weekday:"long",day:"numeric",month:"long",year:"numeric",timeZone:"UTC"});
+    var est = ls0 ? '<div class="callout ok">✅ Día cubierto por: '+ls0.map(function(l){ return '<b>«'+escHtml(l.archivo)+'»</b> ('+concFmtFechaCorta(l.desde)+' → '+concFmtFechaCorta(l.hasta)+')'; }).join(' y ')+'</div>'
+                  : '<div class="callout danger">🔴 Este día no está cubierto por ningún Batch guardado.</div>';
+    var alerta;
+    if(pd.length){
+      var vistos = {}, pers = [];
+      pd.forEach(function(e){ if(!vistos[e.gi]){ vistos[e.gi] = 1; pers.push(e.g.fuera ? 'que está fuera de los periodos de Batch guardados' : 'correspondiente al periodo <b>«'+escHtml(e.g.titulo)+'»</b> ('+concFmtFechaCorta(e.g.desde)+' → '+concFmtFechaCorta(e.g.hasta)+')'); } });
+      alerta = '<div class="cov-alerta">👀 <b>Ojo:</b> de este día quedaron <b>'+plural(pd.length,'viaje pendiente','viajes pendientes')+' por facturar</b>, '+pers.join(' y ')+'.</div>' + concTablaPendItems(pd.map(function(e){ return e.x; }), 50);
+    } else {
+      alerta = nv0 ? '<div class="callout ok">✔ Los '+plural(nv0,'viaje registrado','viajes registrados')+' este día no tienen pendientes de batch (o son de otro cliente).</div>' : '<div class="callout info">No hay viajes registrados este día en la plataforma.</div>';
+    }
+    detalle = '<div class="cov-detalle" id="covDetalle"><h4>📆 '+escHtml(nombre)+'</h4>'+est+alerta+'<div class="btn-row"><button class="btn" onclick="concHistCerrar()">Cerrar detalle</button></div></div>';
+  } else if(gsel && gsel.ok){
+    detalle = '<div class="cov-detalle" id="covDetalle" style="border-color:#2E8B57;"><h4>✅ Periodo «'+escHtml(gsel.titulo)+'» facturado</h4>' +
+      '<div class="hint" style="margin:0 0 8px;">Del '+concFmtFechaCorta(gsel.desde)+' al '+concFmtFechaCorta(gsel.hasta)+' ('+concDiasEntre(gsel.desde,gsel.hasta)+' días).</div>' +
+      '<div class="callout ok" style="font-size:15px;">🎉 <b>Todo OK:</b> los '+plural(gsel.nCon,'viaje','viajes')+' de rutas de Cementos Argos de este periodo tienen su número de batch. No tienes nada pendiente: el periodo fue facturado.</div>' +
+      (gsel.batches.length ? '<div class="hint">Números de batch: '+gsel.batches.slice(0,20).map(escHtml).join(", ")+(gsel.batches.length>20?'…':'')+'</div>' : '') +
+      '<div class="btn-row"><button class="btn" onclick="concHistCerrar()">Cerrar detalle</button></div></div>';
+  } else if(gsel){
+    detalle = '<div class="cov-detalle" id="covDetalle"><h4>'+(gsel.fuera?'📭 Viajes fuera de los periodos de Batch':'📅 Periodo «'+escHtml(gsel.titulo)+'»')+'</h4>' +
+      (gsel.fuera ? '' : '<div class="hint" style="margin:0 0 8px;">Del '+concFmtFechaCorta(gsel.desde)+' al '+concFmtFechaCorta(gsel.hasta)+' ('+concDiasEntre(gsel.desde,gsel.hasta)+' días). Los días del periodo están resaltados en dorado en el calendario.</div>') +
+      '<div class="cov-alerta">👀 <b>Ojo:</b> tienes <b>'+plural(gsel.items.length,'viaje pendiente','viajes pendientes')+' por facturar</b>'+(gsel.fuera?'.':' correspondiente(s) a este periodo.')+' '+plural(gsel.nRem,'remisión sin batch','remisiones sin batch')+(gsel.nSinRem?' · '+plural(gsel.nSinRem,'viaje sin remisión','viajes sin remisión'):'')+'.</div>' +
+      concTablaPendItems(gsel.items, 80) + '<div class="btn-row"><button class="btn" onclick="concHistCerrar()">Cerrar detalle</button></div></div>';
+  } else {
+    detalle = '<div class="cov-ayuda" id="covDetalle">💡 <b>Cómo leerlo:</b> cada cuadro es un día. <b style="color:#2E8B57;">Verde</b> = cubierto por un Batch · <b style="color:#D98E04;">Naranja</b> = cubierto por 2 archivos · <b style="color:#A3372B;">Rojo claro</b> = día sin batch · <b style="color:#C62828;">Globo rojo con número</b> = viajes de ese día pendientes por facturar. <b>Toca un día</b> para ver su detalle o un periodo de arriba para resaltarlo.</div>';
+  }
+
   /* Calendario por meses */
-  var p0 = cov.min.split("-"), p1 = cov.finVista.split("-");
+  var p0 = iniV.split("-"), p1 = finV.split("-");
   var y = +p0[0], m = +p0[1], yf = +p1[0], mf = +p1[1], meses = "", guard = 0;
   while((y<yf || (y===yf && m<=mf)) && guard++<36){
     var primero = new Date(Date.UTC(y,m-1,1)), dow = (primero.getUTCDay()+6)%7, nd = new Date(Date.UTC(y,m,0)).getUTCDate();
-    var cel = "";
+    var cel = "", mp = 0;
     for(var i=0;i<dow;i++) cel += '<div></div>';
     for(var dd=1; dd<=nd; dd++){
       var iso = y+"-"+pad2(m)+"-"+pad2(dd), ls = cov.cubre[iso], cls, tip;
-      var nv = cov.viajesDia[iso]||0;
+      var nv = cov.viajesDia[iso]||0, pdn = (pendDia[iso]||[]).length;
       if(ls && ls.length>1){ cls="over"; tip="Cubierto por "+ls.length+" archivos (traslape): "+ls.map(function(l){return l.archivo;}).join(", "); }
       else if(ls){ cls="ok"; tip="Cubierto por: "+ls[0].archivo; }
       else if(iso>cov.min && iso<cov.max){ cls="gap"; tip="SIN batch"; }
       else if(iso<cov.min){ cls="pend"; tip="Antes del primer batch"; }
       else { cls="pend"; tip="Aún sin batch"; }
       if(nv) tip += " · "+nv+" viaje(s) en la plataforma";
-      cel += '<div class="cov-day '+cls+'" title="'+escHtml(tip)+'">'+dd+'</div>';
+      if(pdn){ tip += " · ⚠ "+pdn+" viaje(s) pendientes por facturar"; cls += " has-pend"; mp += pdn; }
+      if(gsel && ((!gsel.fuera && iso>=gsel.desde && iso<=gsel.hasta) || (gsel.fuera && (pendDia[iso]||[]).some(function(e){ return e.g===gsel; })))) cls += " per";
+      if(CONC_HIST.dia===iso) cls += " sel";
+      cel += '<div class="cov-day '+cls+'" title="'+escHtml(tip)+'" onclick="concHistDia(\''+iso+'\')">'+dd+(pdn?'<span class="b">'+pdn+'</span>':'')+'</div>';
     }
-    meses += '<div class="cov-mes"><h4>'+CONC_MESES[m-1]+' '+y+'</h4><div class="cov-grid">'+['L','M','M','J','V','S','D'].map(function(x){ return '<div class="cov-dow">'+x+'</div>'; }).join("")+cel+'</div></div>';
+    meses += '<div class="cov-mes"><h4>'+CONC_MESES[m-1]+' '+y+(mp?' <span class="mb">⚠ '+mp+' pendiente'+(mp>1?'s':'')+'</span>':'')+'</h4><div class="cov-grid">'+['L','M','M','J','V','S','D'].map(function(x){ return '<div class="cov-dow">'+x+'</div>'; }).join("")+cel+'</div></div>';
     m++; if(m>12){ m=1; y++; }
   }
 
   el.innerHTML = '<div class="card"><h3>Historial de batch facturados</h3>' +
-    '<div class="hint" style="margin:0 0 10px;">Todos los días del mes deben estar cubiertos por un archivo de batch. Pasa el cursor sobre un día para ver qué archivo lo soporta.</div>' +
-    htmlReps + htmlHuecos +
-    '<div class="cov-leyenda"><span><i style="background:#2E8B57;"></i>Cubierto</span><span><i style="background:var(--red-bg);border:1px solid #E9C4BE;"></i>Sin batch</span><span><i style="background:#D98E04;"></i>Cubierto por 2+ archivos</span><span><i style="background:#EEF1F3;"></i>Fuera del rango / pendiente</span></div>' +
+    '<div class="hint" style="margin:0 0 10px;">Calendario interactivo: cada día muestra si lo cubre un archivo de Batch y cuántos viajes quedaron pendientes por facturar.</div>' +
+    banner + detalle + htmlReps + htmlHuecos +
+    '<div class="cov-leyenda"><span><i style="background:#2E8B57;"></i>Cubierto</span><span><i style="background:var(--red-bg);border:1px solid #E9C4BE;"></i>Sin batch</span><span><i style="background:#D98E04;"></i>Cubierto por 2+ archivos</span><span><i style="background:#EEF1F3;"></i>Fuera del rango / pendiente</span><span><i style="background:#C62828;border-radius:50%;"></i>Viajes pendientes por facturar (número)</span><span><i style="outline:3px solid var(--gold);background:#fff;"></i>Periodo resaltado</span></div>' +
     '<div class="cov-meses">'+meses+'</div>' +
     '<h3 style="margin-top:18px;">Archivos guardados</h3>' +
     '<div class="table-wrap"><table class="data"><thead><tr><th>Archivo</th><th>Periodo desde</th><th>Periodo hasta</th><th>Días</th><th>Remisiones</th><th>Importe</th><th>Cargado el</th><th>Usuario</th><th></th></tr></thead><tbody>'+filas+'</tbody></table></div></div>';
@@ -3166,6 +3276,44 @@ function concPesoFlete(m){
 }
 function concFmtPeso(n){ return n.toLocaleString("es-CO",{minimumFractionDigits:2, maximumFractionDigits:2}); }
 
+/* ===== Filtro por periodo de batch / fechas (sección «Viajes de la plataforma y su batch») ===== */
+function concPeriodoDeFechas(){
+  var d = (document.getElementById("concDesde")||{}).value || "", h = (document.getElementById("concHasta")||{}).value || "";
+  if(!d && !h) return "";
+  if(CONC_PEND && CONC_PEND.minF===d && (CONC_PEND.maxF||"")===h) return "__pend";
+  var ls = DB.batchLotes||[];
+  for(var i=0;i<ls.length;i++){ if(ls[i].desde===d && ls[i].hasta===h) return ls[i].id; }
+  return "__custom";
+}
+function concLlenarPeriodos(){
+  var sel = document.getElementById("concPeriodo"); if(!sel) return;
+  var opts = [["","Todos los periodos"]];
+  if(CONC_PEND) opts.push(["__pend","⏳ Archivo por guardar: "+CONC_PEND.archivo+(CONC_PEND.minF?" ("+CONC_PEND.minF+" a "+(CONC_PEND.maxF||CONC_PEND.minF)+")":"")]);
+  (DB.batchLotes||[]).slice().sort(function(a,b){ return b.desde.localeCompare(a.desde) || b.hasta.localeCompare(a.hasta); })
+    .forEach(function(l){ opts.push([l.id,"Batch: "+l.archivo+" ("+l.desde+" a "+l.hasta+")"]); });
+  opts.push(["__custom","Fechas personalizadas…"]);
+  sel.innerHTML = opts.map(function(o){ return '<option value="'+escHtml(o[0])+'">'+escHtml(o[1])+'</option>'; }).join("");
+  var v = concPeriodoDeFechas();
+  sel.value = opts.some(function(o){ return o[0]===v; }) ? v : "__custom";
+}
+function concPeriodoCambio(){
+  var v = document.getElementById("concPeriodo").value, d = document.getElementById("concDesde"), h = document.getElementById("concHasta");
+  if(v===""){ d.value = ""; h.value = ""; }
+  else if(v==="__pend" && CONC_PEND){ d.value = CONC_PEND.minF||""; h.value = CONC_PEND.maxF||""; }
+  else { var l = concLoteById(v); if(l){ d.value = l.desde; h.value = l.hasta; } }
+  renderConciliacion();
+}
+function concFechasCambio(){ renderConciliacion(); }
+function concLimpiarFechas(){ document.getElementById("concDesde").value = ""; document.getElementById("concHasta").value = ""; renderConciliacion(); }
+/* Remisiones del Batch sin viaje: se filtran por el archivo elegido o por el rango de fechas. */
+function concFiltrarSinViaje(arr){
+  var sel = document.getElementById("concPeriodo"), v = sel ? sel.value : "";
+  var d = (document.getElementById("concDesde")||{}).value || "", h = (document.getElementById("concHasta")||{}).value || "";
+  if(!v && !d && !h) return arr;
+  if(v==="__pend") return arr.filter(function(x){ return !x.loteId; });
+  if(v && v!=="__custom" && concLoteById(v)) return arr.filter(function(x){ return x.loteId===v; });
+  return arr.filter(function(x){ return !x.fecha || ((!d || x.fecha>=d) && (!h || x.fecha<=h)); });
+}
 function concCalcular(todos){
   var desde = todos ? "" : ((document.getElementById("concDesde")||{}).value || ""), hasta = todos ? "" : ((document.getElementById("concHasta")||{}).value || "");
   var cuenta = {}, claves = {};
@@ -3186,6 +3334,7 @@ function concCalcular(todos){
   var sinViaje = CONC.filas.filter(function(x){ return !claves[x.clave]; });
   /* de la fecha más reciente a la más antigua */
   sinViaje.sort(function(a,b){ return String(b.fecha||"").localeCompare(String(a.fecha||"")) || String(b.rem).localeCompare(String(a.rem)); });
+  if(!todos) sinViaje = concFiltrarSinViaje(sinViaje);
   return {viajes:viajes, sinViaje:sinViaje};
 }
 
@@ -3207,6 +3356,7 @@ function renderConciliacion(){
       tv = document.getElementById("concTablaViajes"), hu = document.getElementById("concHuerfanas");
   if(!met) return;
   concReconstruir();
+  concLlenarPeriodos();
   concRenderHistorial();
   if(!CONC){
     ctl.style.display = "none"; tv.innerHTML = ""; hu.innerHTML = ""; var pe0 = document.getElementById("concPendientes"); if(pe0) pe0.innerHTML = "";
@@ -3217,6 +3367,17 @@ function renderConciliacion(){
   var filtro = document.getElementById("concFiltro").value || "todos";
   var buscar = (document.getElementById("concBuscar").value || "").trim().toLowerCase();
   var res = concCalcular();
+  var infoEl = document.getElementById("concRangoInfo");
+  if(infoEl){
+    var dI = (document.getElementById("concDesde")||{}).value || "", hI = (document.getElementById("concHasta")||{}).value || "";
+    infoEl.innerHTML = (dI||hI) ? 'Mostrando <b>'+res.viajes.length+' viaje(s)</b> con fecha '+(dI?'desde el <b>'+concFmtFechaCorta(dI)+'</b>':'')+(dI&&hI?' ':'')+(hI?'hasta el <b>'+concFmtFechaCorta(hI)+'</b>':'')+'. Las métricas, la tabla, las remisiones del Batch sin viaje y el Excel exportado respetan este filtro.' : 'Mostrando todos los viajes de la plataforma ('+res.viajes.length+'). Elige un periodo de batch o pon fechas para acotar.';
+    var selP = (document.getElementById("concPeriodo")||{}).value;
+    if(selP && selP!=="__custom"){
+      var gP = concPendientesDatos().filter(function(g){ return g.id===selP; })[0];
+      if(gP && gP.ok) infoEl.innerHTML += '<div class="callout ok" style="font-size:14px;margin-top:8px;">✅ <b>Todo OK: el periodo «'+escHtml(gP.titulo)+'» fue facturado.</b> Los '+gP.nCon+' viaje(s) de rutas Argos tienen su número de batch. No hay nada pendiente.</div>';
+      else if(gP && gP.items.length) infoEl.innerHTML += '<div class="callout warn" style="font-size:14px;margin-top:8px;">⚠ <b>Ojo:</b> este periodo tiene '+gP.items.length+' viaje(s) pendiente(s) por facturar. Míralos en la sección «4. Remisiones pendientes de batch por periodo».</div>';
+    }
+  }
   var con = res.viajes.filter(function(x){ return x.estado==="con"; }).length;
   var sin = res.viajes.filter(function(x){ return x.estado==="sin"; }).length;
   var sr = res.viajes.filter(function(x){ return x.estado==="sinrem"; }).length;
@@ -3279,20 +3440,29 @@ function renderConciliacion(){
 function concPendientesDatos(){
   var res = concCalcular(true);
   var grupos = (DB.batchLotes||[]).slice().sort(function(a,b){ return b.desde.localeCompare(a.desde) || b.hasta.localeCompare(a.hasta); })
-    .map(function(l){ return {titulo:l.archivo, desde:l.desde, hasta:l.hasta, items:[]}; });
-  if(CONC_PEND && CONC_PEND.minF) grupos.unshift({titulo:CONC_PEND.archivo+" (por guardar)", desde:CONC_PEND.minF, hasta:CONC_PEND.maxF||CONC_PEND.minF, items:[]});
+    .map(function(l){ return {id:l.id, titulo:l.archivo, desde:l.desde, hasta:l.hasta, items:[]}; });
+  if(CONC_PEND && CONC_PEND.minF) grupos.unshift({id:"__pend", titulo:CONC_PEND.archivo+" (por guardar)", desde:CONC_PEND.minF, hasta:CONC_PEND.maxF||CONC_PEND.minF, items:[]});
   var fuera = {titulo:"", desde:"", hasta:"", items:[], fuera:true};
   res.viajes.forEach(function(x){
-    if(x.estado!=="sin" && x.estado!=="parcial" && x.estado!=="sinrem") return;
+    if(x.estado==="otro") return; /* rutas de otro cliente no entran en el Batch */
     var g = null;
     for(var i=0;i<grupos.length;i++){ if(x.v.fecha>=grupos[i].desde && x.v.fecha<=grupos[i].hasta){ g = grupos[i]; break; } }
-    (g||fuera).items.push(x);
+    var gg = g || fuera;
+    gg.nTot = (gg.nTot||0) + 1; gg.batches = gg.batches || [];
+    if(x.estado==="con"){
+      gg.nCon = (gg.nCon||0) + 1;
+      (x.batch||"").split(", ").forEach(function(b){ if(b && gg.batches.indexOf(b)<0) gg.batches.push(b); });
+      return;
+    }
+    gg.items.push(x);
   });
   grupos.push(fuera);
   grupos.forEach(function(g){
     g.items.sort(function(a,b){ return (b.v.fecha+(b.v.hora||"")).localeCompare(a.v.fecha+(a.v.hora||"")); });
     g.nRem = g.items.reduce(function(a,x){ return a + (x.estado==="sinrem" ? 0 : x.faltan.length); },0);
     g.nSinRem = g.items.filter(function(x){ return x.estado==="sinrem"; }).length;
+    g.nTot = g.nTot||0; g.nCon = g.nCon||0; g.batches = g.batches||[];
+    g.ok = !g.fuera && !g.items.length && g.nCon>0; /* periodo facturado: todos sus viajes de rutas Argos tienen batch */
   });
   return grupos;
 }
@@ -3308,7 +3478,7 @@ function concRenderPendientes(){
     var resumen = g.items.length ? ' · <b>'+g.nRem+' remisión(es) pendiente(s)</b>'+(g.nSinRem?' · '+g.nSinRem+' viaje(s) sin remisión registrada':'') : '';
     html += '<h4 style="margin:16px 0 6px;color:var(--navy);">'+titulo+resumen+'</h4>';
     if(g.fuera) html += '<div class="hint" style="margin:0 0 6px;">Fechas que ningún archivo de Batch cubre: aún no se ha cargado el Batch de ese periodo.</div>';
-    if(!g.items.length){ html += '<div class="callout ok">Sin pendientes: todas las remisiones de este periodo tienen batch.</div>'; return; }
+    if(!g.items.length){ html += g.ok ? '<div class="callout ok" style="font-size:14px;">✅ <b>Todo OK: este periodo fue facturado.</b> Los '+g.nCon+' viaje(s) de rutas Argos tienen su número de batch'+(g.batches.length?' (batch '+g.batches.slice(0,12).map(escHtml).join(", ")+(g.batches.length>12?'…':'')+')':'')+'. No hay nada pendiente.</div>' : '<div class="callout info">Sin viajes de rutas Argos registrados en este periodo.</div>'; return; }
     html += '<div class="table-wrap"><table class="data"><thead><tr><th>Fecha</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Remisión pendiente de batch</th><th>Estado</th></tr></thead><tbody>' +
       g.items.slice(0,MAX).map(function(x){
         var c = conductorById(x.v.conductorId), r = rutaByCodigo(x.v.rutaCodigo);
