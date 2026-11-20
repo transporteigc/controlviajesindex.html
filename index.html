@@ -153,9 +153,9 @@ table.data tbody tr:hover{background:var(--cream);}
 .cov-grid{display:grid;grid-template-columns:repeat(7,32px);gap:3px;}
 .cov-dow{font-size:10px;color:var(--slate);text-align:center;}
 .cov-day{height:32px;border-radius:6px;font-size:11px;display:flex;align-items:center;justify-content:center;font-family:'IBM Plex Mono',monospace;}
-.cov-day.ok{background:var(--green-bg);color:var(--green);}
+.cov-day.ok{background:#2E8B57;color:#fff;font-weight:700;}
 .cov-day.gap{background:var(--red-bg);color:var(--red);font-weight:700;border:1px solid #E9C4BE;}
-.cov-day.over{background:var(--amber-bg);color:var(--amber);}
+.cov-day.over{background:#D98E04;color:#fff;font-weight:700;}
 .cov-day.pend{background:#EEF1F3;color:#8A98A0;}
 .cov-leyenda{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--slate);margin:8px 0;}
 .cov-leyenda span i{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-2px;}
@@ -379,13 +379,14 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
   <div class="card" id="concControles" style="display:none;">
     <h3>2. Viajes de la plataforma y su batch</h3>
     <div class="grid3">
-      <div class="field"><label for="concFiltro">Mostrar</label><select id="concFiltro" onchange="renderConciliacion()"><option value="todos">Todos los viajes</option><option value="con">Solo con batch</option><option value="sin">Solo sin batch (incluye parciales)</option><option value="multi">Solo viajes con 2+ remisiones</option></select></div>
+      <div class="field"><label for="concFiltro">Mostrar</label><select id="concFiltro" onchange="renderConciliacion()"><option value="todos">Todos los viajes</option><option value="con">Solo con batch</option><option value="sin">Solo sin batch (incluye parciales)</option><option value="multi">Solo viajes con 2+ remisiones</option><option value="otro">Solo otro cliente (sin batch por ruta)</option></select></div>
       <div class="field"><label for="concBuscar">Buscar (remisión, batch, placa, conductor)</label><input type="text" id="concBuscar" oninput="renderConciliacion()" autocomplete="off"></div>
       <div class="btn-row" style="align-self:end;margin:0 0 10px;"><button class="btn gold" onclick="exportarConciliacion()">Exportar a Excel</button></div>
     </div>
     <div id="concTablaViajes"></div>
   </div>
   <div id="concHuerfanas"></div>
+  <div id="concPendientes"></div>
 </section>
 
 <section class="panel" id="panel-facturacion">
@@ -445,7 +446,12 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
   </div>
 
   <div class="card">
-    <h3>5. Detalle por remisión</h3>
+    <h3>5. Facturación por número de batch</h3>
+    <div id="facPorBatch"></div>
+  </div>
+
+  <div class="card">
+    <h3>6. Detalle por remisión</h3>
     <div id="facDetalle"></div>
   </div>
 </section>
@@ -2871,6 +2877,14 @@ function concPartesViaje(v){
   if(CONC && CONC.porRem[full]) return [{rem:String(v.remision).trim(), k:full}];
   return concPartesRem(v.remision);
 }
+/* Únicas rutas del cliente Cementos Argos que tienen número de batch: Cantera Ciprecon, Cantera Los Pioneros,
+   Cantera G.M. Santo Tomás, Cantera Ingecost y Planta Argos Soledad. Las demás son de otros clientes y no salen en el Batch. */
+var CONC_RUTAS_BATCH = [/ciprecon/, /pioneros?/, /santo\s*tom/, /ingecost/, /soledad/];
+function concRutaTieneBatch(rutaCodigo){
+  var r = rutaByCodigo(rutaCodigo), n = concNormTexto(r ? r.nombre : rutaCodigo);
+  return CONC_RUTAS_BATCH.some(function(rx){ return rx.test(n); });
+}
+var CONC_OBS_OTRO = "No se encontró batch: esta ruta no hace parte de las rutas establecidas por el cliente Cementos Argos (corresponde a otro cliente).";
 function concFmtNum(x){ if(x===""||x==null) return ""; var n=Number(x); return isNaN(n)?String(x):String(Math.round(n)); }
 function concFechaIso(v){
   if(v instanceof Date && !isNaN(v)) return v.getFullYear()+"-"+pad2(v.getMonth()+1)+"-"+pad2(v.getDate());
@@ -3139,7 +3153,7 @@ function concRenderHistorial(){
   el.innerHTML = '<div class="card"><h3>Historial de batch facturados</h3>' +
     '<div class="hint" style="margin:0 0 10px;">Todos los días del mes deben estar cubiertos por un archivo de batch. Pasa el cursor sobre un día para ver qué archivo lo soporta.</div>' +
     htmlReps + htmlHuecos +
-    '<div class="cov-leyenda"><span><i style="background:var(--green-bg);"></i>Cubierto</span><span><i style="background:var(--red-bg);border:1px solid #E9C4BE;"></i>Sin batch</span><span><i style="background:var(--amber-bg);"></i>Cubierto por 2+ archivos</span><span><i style="background:#EEF1F3;"></i>Fuera del rango / pendiente</span></div>' +
+    '<div class="cov-leyenda"><span><i style="background:#2E8B57;"></i>Cubierto</span><span><i style="background:var(--red-bg);border:1px solid #E9C4BE;"></i>Sin batch</span><span><i style="background:#D98E04;"></i>Cubierto por 2+ archivos</span><span><i style="background:#EEF1F3;"></i>Fuera del rango / pendiente</span></div>' +
     '<div class="cov-meses">'+meses+'</div>' +
     '<h3 style="margin-top:18px;">Archivos guardados</h3>' +
     '<div class="table-wrap"><table class="data"><thead><tr><th>Archivo</th><th>Periodo desde</th><th>Periodo hasta</th><th>Días</th><th>Remisiones</th><th>Importe</th><th>Cargado el</th><th>Usuario</th><th></th></tr></thead><tbody>'+filas+'</tbody></table></div></div>';
@@ -3152,8 +3166,8 @@ function concPesoFlete(m){
 }
 function concFmtPeso(n){ return n.toLocaleString("es-CO",{minimumFractionDigits:2, maximumFractionDigits:2}); }
 
-function concCalcular(){
-  var desde = (document.getElementById("concDesde")||{}).value || "", hasta = (document.getElementById("concHasta")||{}).value || "";
+function concCalcular(todos){
+  var desde = todos ? "" : ((document.getElementById("concDesde")||{}).value || ""), hasta = todos ? "" : ((document.getElementById("concHasta")||{}).value || "");
   var cuenta = {}, claves = {};
   DB.viajes.forEach(function(v){ concPartesViaje(v).forEach(function(p){ cuenta[p.k]=(cuenta[p.k]||0)+1; claves[p.k]=true; }); });
   var viajes = DB.viajes.filter(function(v){ return (!desde || v.fecha>=desde) && (!hasta || v.fecha<=hasta); })
@@ -3164,11 +3178,14 @@ function concCalcular(){
       m.forEach(function(x){ if(bs.indexOf(x.batch)<0) bs.push(x.batch); });
       var nf = partes.filter(function(p){ return p.found; }).length;
       var estado = !partes.length ? "sinrem" : (nf===partes.length ? "con" : (nf ? "parcial" : "sin"));
+      if((estado==="sin" || estado==="sinrem") && !concRutaTieneBatch(v.rutaCodigo)) estado = "otro"; /* ruta de otro cliente: no aparece en el Batch de Argos */
       return {v:v, k:(partes.length?partes[0].k:""), m:m, batch:bs.join(", "), estado:estado,
         repetida:partes.some(function(p){ return cuenta[p.k]>1; }),
         multi:partes.length>1, partes:partes, faltan:partes.filter(function(p){ return !p.found; })};
     });
   var sinViaje = CONC.filas.filter(function(x){ return !claves[x.clave]; });
+  /* de la fecha más reciente a la más antigua */
+  sinViaje.sort(function(a,b){ return String(b.fecha||"").localeCompare(String(a.fecha||"")) || String(b.rem).localeCompare(String(a.rem)); });
   return {viajes:viajes, sinViaje:sinViaje};
 }
 
@@ -3192,7 +3209,7 @@ function renderConciliacion(){
   concReconstruir();
   concRenderHistorial();
   if(!CONC){
-    ctl.style.display = "none"; tv.innerHTML = ""; hu.innerHTML = "";
+    ctl.style.display = "none"; tv.innerHTML = ""; hu.innerHTML = ""; var pe0 = document.getElementById("concPendientes"); if(pe0) pe0.innerHTML = "";
     met.innerHTML = '<div class="card"><p class="hint" style="font-size:13px;margin:0;">Carga y guarda el Excel del cliente para ver la conciliación.</p></div>';
     return;
   }
@@ -3205,14 +3222,16 @@ function renderConciliacion(){
   var sr = res.viajes.filter(function(x){ return x.estado==="sinrem"; }).length;
   var parc = res.viajes.filter(function(x){ return x.estado==="parcial"; }).length;
   var multis = res.viajes.filter(function(x){ return x.multi; });
+  var otros = res.viajes.filter(function(x){ return x.estado==="otro"; }).length;
   var impTotal = CONC.filas.reduce(function(a,x){ return a+x.importe; },0);
   var impSinViaje = res.sinViaje.reduce(function(a,x){ return a+x.importe; },0);
-  var pct = res.viajes.length ? Math.round(con*100/res.viajes.length) : 0;
+  var baseArgos = res.viajes.length - otros, pct = baseArgos ? Math.round(con*100/baseArgos) : 0;
 
   var lista = res.viajes.filter(function(x){
     if(filtro==="con" && x.estado!=="con") return false;
     if(filtro==="sin" && x.estado!=="sin" && x.estado!=="sinrem" && x.estado!=="parcial") return false;
     if(filtro==="multi" && !x.multi) return false;
+    if(filtro==="otro" && x.estado!=="otro") return false;
     if(buscar){
       var c = conductorById(x.v.conductorId);
       var txt = [x.v.remision, x.batch, x.v.vehiculo, c?c.nombre:""].join(" ").toLowerCase();
@@ -3226,6 +3245,7 @@ function renderConciliacion(){
     var pill = x.estado==="con" ? '<span class="pill aprobada">✔ Con batch</span>'
              : x.estado==="sin" ? '<span class="pill rechazada">✖ Sin batch</span>'
              : x.estado==="parcial" ? '<span class="pill rechazada" title="Faltan en el Batch: '+escHtml(x.faltan.map(function(p){ return p.rem; }).join(", "))+'">◐ Parcial: falta batch en '+x.faltan.length+' de '+x.partes.length+'</span>'
+             : x.estado==="otro" ? '<span class="pill revision" title="'+escHtml(CONC_OBS_OTRO)+'">Sin batch · otro cliente</span><div class="hint" style="margin:4px 0 0;font-size:11px;">'+escHtml(CONC_OBS_OTRO)+'</div>'
              : '<span class="pill revision">Sin remisión</span>';
     if(x.multi) pill += ' <span class="pill revision" title="Este viaje trae varias remisiones separadas por guion">🔗 '+x.partes.length+' remisiones</span>';
     if(x.repetida) pill += ' <span class="pill revision" title="Esta remisión está registrada más de una vez en la plataforma">Remisión repetida</span>';
@@ -3243,24 +3263,71 @@ function renderConciliacion(){
   met.innerHTML =
     '<div class="grid4" style="margin-bottom:18px;">' +
       '<div class="metric"><p class="m-label">Viajes en la plataforma</p><div class="m-value">'+res.viajes.length+'</div></div>' +
-      '<div class="metric alt"><p class="m-label">✔ Con batch</p><div class="m-value">'+con+' ('+pct+'%)</div></div>' +
-      '<div class="metric"><p class="m-label">✖ Sin batch</p><div class="m-value">'+sin+(parc?' · '+parc+' parcial(es)':'')+(sr?' · '+sr+' sin remisión':'')+'</div></div>' +
+      '<div class="metric alt"><p class="m-label">✔ Con batch (% de viajes de rutas Argos)</p><div class="m-value">'+con+' ('+pct+'%)</div></div>' +
+      '<div class="metric"><p class="m-label">✖ Sin batch</p><div class="m-value">'+sin+(parc?' · '+parc+' parcial(es)':'')+(sr?' · '+sr+' sin remisión':'')+(otros?' · '+otros+' de otro cliente':'')+'</div></div>' +
       '<div class="metric alt"><p class="m-label">Batch sin viaje en plataforma</p><div class="m-value">'+res.sinViaje.length+'</div></div>' +
     '</div>' + concAvisoMulti(multis);
   tv.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr><th>Fecha</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Remisión</th><th>Batch para facturar</th><th>Peso neto</th><th>Flete</th><th>Importe batch</th><th>Check</th></tr></thead><tbody>'+filasHtml+'</tbody></table></div>' +
       (recorte?'<div class="hint">Se muestran los primeros '+MAX+' de '+lista.length+' viajes; el Excel exportado trae todos.</div>':'');
-  hu.innerHTML = '<div class="card"><h3>3. Remisiones del Batch que no están registradas en la plataforma</h3>' +
+  hu.innerHTML = '<div class="card"><h3>3. Remisiones del Batch que no están registradas en la plataforma <span class="hint" style="font-weight:400;">(de la fecha más reciente a la más antigua)</span></h3>' +
       '<div class="hint" style="margin:0 0 10px;">Importe de estas remisiones: <b>'+fmt(impSinViaje)+'</b> de '+fmt(impTotal)+' en todo el archivo. Revisa si falta registrar el viaje o si la remisión se digitó diferente.</div>' +
       '<div class="table-wrap"><table class="data"><thead><tr><th>Batch</th><th>Remisión</th><th>Fecha Batch</th><th>Origen</th><th>Destino</th><th>Peso neto</th><th>Flete</th><th>Importe</th></tr></thead><tbody>'+huerfanas+'</tbody></table></div></div>';
+  concRenderPendientes();
+}
+
+/* ===== Remisiones pendientes de batch, agrupadas por periodo de cada archivo de Batch ===== */
+function concPendientesDatos(){
+  var res = concCalcular(true);
+  var grupos = (DB.batchLotes||[]).slice().sort(function(a,b){ return b.desde.localeCompare(a.desde) || b.hasta.localeCompare(a.hasta); })
+    .map(function(l){ return {titulo:l.archivo, desde:l.desde, hasta:l.hasta, items:[]}; });
+  if(CONC_PEND && CONC_PEND.minF) grupos.unshift({titulo:CONC_PEND.archivo+" (por guardar)", desde:CONC_PEND.minF, hasta:CONC_PEND.maxF||CONC_PEND.minF, items:[]});
+  var fuera = {titulo:"", desde:"", hasta:"", items:[], fuera:true};
+  res.viajes.forEach(function(x){
+    if(x.estado!=="sin" && x.estado!=="parcial" && x.estado!=="sinrem") return;
+    var g = null;
+    for(var i=0;i<grupos.length;i++){ if(x.v.fecha>=grupos[i].desde && x.v.fecha<=grupos[i].hasta){ g = grupos[i]; break; } }
+    (g||fuera).items.push(x);
+  });
+  grupos.push(fuera);
+  grupos.forEach(function(g){
+    g.items.sort(function(a,b){ return (b.v.fecha+(b.v.hora||"")).localeCompare(a.v.fecha+(a.v.hora||"")); });
+    g.nRem = g.items.reduce(function(a,x){ return a + (x.estado==="sinrem" ? 0 : x.faltan.length); },0);
+    g.nSinRem = g.items.filter(function(x){ return x.estado==="sinrem"; }).length;
+  });
+  return grupos;
+}
+function concRenderPendientes(){
+  var el = document.getElementById("concPendientes"); if(!el) return;
+  if(!CONC){ el.innerHTML = ""; return; }
+  var grupos = concPendientesDatos(), MAX = 200;
+  var html = '<div class="card"><h3>4. Remisiones pendientes de batch por periodo</h3>' +
+    '<div class="hint" style="margin:0 0 10px;">Viajes de rutas del cliente Cementos Argos registrados en la plataforma cuyas remisiones <b>no aparecen en ningún Batch</b>, agrupados por el periodo del archivo de Batch al que corresponde su fecha. Son los que quedaron pendientes por facturar. Los viajes de otros clientes no se incluyen.</div>';
+  grupos.forEach(function(g){
+    if(g.fuera && !g.items.length) return;
+    var titulo = g.fuera ? 'Fuera de los periodos de Batch guardados' : 'Batch «'+escHtml(g.titulo)+'» · '+concFmtFechaCorta(g.desde)+' al '+concFmtFechaCorta(g.hasta);
+    var resumen = g.items.length ? ' · <b>'+g.nRem+' remisión(es) pendiente(s)</b>'+(g.nSinRem?' · '+g.nSinRem+' viaje(s) sin remisión registrada':'') : '';
+    html += '<h4 style="margin:16px 0 6px;color:var(--navy);">'+titulo+resumen+'</h4>';
+    if(g.fuera) html += '<div class="hint" style="margin:0 0 6px;">Fechas que ningún archivo de Batch cubre: aún no se ha cargado el Batch de ese periodo.</div>';
+    if(!g.items.length){ html += '<div class="callout ok">Sin pendientes: todas las remisiones de este periodo tienen batch.</div>'; return; }
+    html += '<div class="table-wrap"><table class="data"><thead><tr><th>Fecha</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Remisión pendiente de batch</th><th>Estado</th></tr></thead><tbody>' +
+      g.items.slice(0,MAX).map(function(x){
+        var c = conductorById(x.v.conductorId), r = rutaByCodigo(x.v.rutaCodigo);
+        var rem = x.estado==="sinrem" ? '<i>(el viaje no tiene remisión)</i>' : x.faltan.map(function(p){ return escHtml(p.rem); }).join('<br>');
+        var est = x.estado==="parcial" ? '<span class="pill rechazada">◐ Parcial</span>' : x.estado==="sinrem" ? '<span class="pill revision">Sin remisión</span>' : '<span class="pill rechazada">✖ Sin batch</span>';
+        return '<tr><td>'+x.v.fecha+'</td><td class="txt">'+escHtml(c?c.nombre:x.v.conductorId)+'</td><td>'+escHtml(x.v.vehiculo||"")+'</td><td class="txt">'+escHtml(r?r.nombre:x.v.rutaCodigo)+'</td><td class="txt"><b>'+rem+'</b></td><td class="txt">'+est+'</td></tr>';
+      }).join("") + '</tbody></table></div>' +
+      (g.items.length>MAX?'<div class="hint">Se muestran '+MAX+' de '+g.items.length+'; el Excel exportado trae todos.</div>':'');
+  });
+  el.innerHTML = html + '</div>';
 }
 
 function exportarConciliacion(){
   if(!CONC){ alert("Primero carga el Excel del Batch."); return; }
   var res = concCalcular();
-  var estados = {con:"Con batch", sin:"Sin batch", parcial:"Parcial (falta batch en alguna remisión)", sinrem:"Sin remisión"};
+  var estados = {con:"Con batch", sin:"Sin batch", otro:"Sin batch: otro cliente (ruta no establecida por Cementos Argos)", parcial:"Parcial (falta batch en alguna remisión)", sinrem:"Sin remisión"};
   var filas = res.viajes.map(function(x){
     var v=x.v, c=conductorById(v.conductorId), r=rutaByCodigo(v.rutaCodigo);
-    return {Fecha:v.fecha, Conductor:c?c.nombre:v.conductorId, Vehiculo:v.vehiculo||"", Ruta:r?r.nombre:v.rutaCodigo, "Remision proveedor":v.remision||"", "Batch para facturar":x.batch, "Peso neto":concPesoFlete(x.m).peso, Flete:concPesoFlete(x.m).flete.join(" / "), "Importe batch":x.m.reduce(function(a,y){return a+y.importe;},0), Check:estados[x.estado]+(x.repetida?" (remisión repetida)":""), "N.º de remisiones":x.partes.length, "Remisiones sin batch":x.faltan.map(function(p){return p.rem;}).join(" - ")};
+    return {Fecha:v.fecha, Conductor:c?c.nombre:v.conductorId, Vehiculo:v.vehiculo||"", Ruta:r?r.nombre:v.rutaCodigo, "Remision proveedor":v.remision||"", "Batch para facturar":x.batch, "Peso neto":concPesoFlete(x.m).peso, Flete:concPesoFlete(x.m).flete.join(" / "), "Importe batch":x.m.reduce(function(a,y){return a+y.importe;},0), Check:estados[x.estado]+(x.repetida?" (remisión repetida)":""), "N.º de remisiones":x.partes.length, "Remisiones sin batch":x.faltan.map(function(p){return p.rem;}).join(" - "), Observacion:(x.estado==="otro"?CONC_OBS_OTRO:"")};
   });
   var huerf = res.sinViaje.map(function(x){ return {Batch:x.batch, "Remision proveedor":x.rem, "Fecha Batch":x.fecha, Origen:x.origen, Destino:x.destino, "Peso neto":x.peso, Flete:x.flete, Importe:x.importe}; });
   var resumen = [
@@ -3270,6 +3337,7 @@ function exportarConciliacion(){
     {Concepto:"Sin batch", Valor:res.viajes.filter(function(x){return x.estado==="sin";}).length},
     {Concepto:"Sin remisión", Valor:res.viajes.filter(function(x){return x.estado==="sinrem";}).length},
     {Concepto:"Parcial (falta batch en alguna remisión)", Valor:res.viajes.filter(function(x){return x.estado==="parcial";}).length},
+    {Concepto:"Viajes de otro cliente (sin batch por ruta)", Valor:res.viajes.filter(function(x){return x.estado==="otro";}).length},
     {Concepto:"Viajes con 2 o más remisiones", Valor:res.viajes.filter(function(x){return x.multi;}).length},
     {Concepto:"Remisiones del Batch sin viaje en la plataforma", Valor:res.sinViaje.length}
   ];
@@ -3278,6 +3346,10 @@ function exportarConciliacion(){
   res.viajes.forEach(function(x){ if(!x.multi) return; var c=conductorById(x.v.conductorId); x.partes.forEach(function(p){ var f=CONC.porRem[p.k]||[]; multiFilas.push({Fecha:x.v.fecha, Conductor:c?c.nombre:x.v.conductorId, Vehiculo:x.v.vehiculo||"", "Remision del viaje (completa)":x.v.remision||"", "Remision individual":p.rem, "Batch para facturar":f.map(function(y){return y.batch;}).join(", "), "Peso neto":concPesoFlete(f).peso, "Importe batch":f.reduce(function(a,y){return a+y.importe;},0), Check:p.found?"Con batch":"Sin batch"}); }); });
   var hojas = [hojaDesde("Resumen",resumen), hojaDesde("Viajes vs Batch",filas), hojaDesde("Batch sin viaje",huerf), hojaDesde("Historial batch",hist)];
   if(multiFilas.length) hojas.splice(2,0,hojaDesde("Viajes 2+ remisiones",multiFilas));
+  var pendFilas = [];
+  concPendientesDatos().forEach(function(g){ g.items.forEach(function(x){ var c=conductorById(x.v.conductorId), r=rutaByCodigo(x.v.rutaCodigo);
+    (x.estado==="sinrem" ? [{rem:"(el viaje no tiene remisión)"}] : x.faltan).forEach(function(p){ pendFilas.push({"Periodo de Batch":g.fuera?"Fuera de los periodos guardados":g.titulo, Desde:g.desde, Hasta:g.hasta, Fecha:x.v.fecha, Conductor:c?c.nombre:x.v.conductorId, Vehiculo:x.v.vehiculo||"", Ruta:r?r.nombre:x.v.rutaCodigo, "Remision pendiente de batch":p.rem, Estado:estados[x.estado]}); }); }); });
+  if(pendFilas.length) hojas.push(hojaDesde("Pendientes por periodo",pendFilas));
   descargarLibro(libroDesde(hojas), "conciliacion-batch-"+nowDateStr()+".xlsx");
 }
 
@@ -3478,7 +3550,7 @@ function facFilasQuincena(P){
 
 function facCalcular(q){
   var kg = (document.getElementById("facUnidad").value==="kg");
-  var filas = facFilasQuincena(q), grupos = {}, filasCalc = [];
+  var filas = facFilasQuincena(q), grupos = {}, filasCalc = [], porBatch = {};
   var tot = {peso:0, fac:0, imp:0, sinTarifa:0, filas:filas.length};
   filas.forEach(function(x){
     var f = x.f, clave = facClave(f.origen, f.destino), m = facMapeoDe(clave), t = null, auto = false;
@@ -3491,10 +3563,14 @@ function facCalcular(q){
     filasCalc.push(r);
     var g = (grupos[t?t.id:"__sin"] = grupos[t?t.id:"__sin"] || {tarifa:t, n:0, peso:0, fac:0, imp:0, fletesBatch:[]});
     g.n++; g.peso+=pesoT; g.fac+=fac; g.imp+=imp;
+    var gb = (porBatch[r.batch] = porBatch[r.batch] || {batch:r.batch, n:0, peso:0, fac:0, imp:0, fletes:[], fletesBatch:[], sinTarifa:0});
+    gb.n++; gb.peso+=pesoT; gb.fac+=fac; gb.imp+=imp; if(!t) gb.sinTarifa++;
+    if(t && gb.fletes.indexOf(flete)<0) gb.fletes.push(flete);
+    if(!isNaN(r.fleteBatch) && r.fleteBatch!==0 && gb.fletesBatch.indexOf(Math.round(r.fleteBatch))<0) gb.fletesBatch.push(Math.round(r.fleteBatch));
     if(!isNaN(r.fleteBatch) && r.fleteBatch!==0 && g.fletesBatch.indexOf(Math.round(r.fleteBatch))<0) g.fletesBatch.push(Math.round(r.fleteBatch));
     tot.peso+=pesoT; tot.fac+=fac; tot.imp+=imp; if(!t) tot.sinTarifa++;
   });
-  return {filas:filasCalc, grupos:grupos, tot:tot};
+  return {filas:filasCalc, grupos:grupos, tot:tot, porBatch:porBatch};
 }
 
 function renderFacturacion(){
@@ -3569,7 +3645,16 @@ function renderFacturacion(){
     }).join("")+
     '<tr><td class="txt"><b>TOTAL</b></td><td><b>'+T.filas+'</b></td><td><b>'+concFmtPeso(T.peso)+'</b></td><td></td><td></td><td><b>'+fmt(T.fac)+'</b></td><td><b>'+fmt(T.imp)+'</b></td><td><b>'+(dif>0?"+":"")+fmt(dif)+'</b></td></tr></tbody></table></div>';
 
-  /* 5. Detalle */
+  /* 5. Por número de batch */
+  var bks = Object.keys(R.porBatch).sort(function(a,b){ return (Number(a)-Number(b)) || String(a).localeCompare(String(b)); });
+  var pre = function(arr){ return arr.length ? arr.map(fmt).join(" / ") : "—"; };
+  document.getElementById("facPorBatch").innerHTML = !bks.length ? '<p class="hint" style="margin:0;">Sin datos para este corte.</p>' :
+    '<div class="hint" style="margin:0 0 8px;">Peso, precio del flete (por tonelada o kilo, según la unidad elegida) e importe a facturar de cada número de batch del corte.</div><div class="table-wrap"><table class="data"><thead><tr><th>N.º de batch</th><th>Remisiones</th><th>Peso</th><th>Tu precio (flete)</th><th>Precio del Batch</th><th>Importe a facturar</th><th>Importe Batch</th><th>Diferencia</th></tr></thead><tbody>'+
+    bks.map(function(k){ var g=R.porBatch[k], d=g.fac-g.imp;
+      return '<tr><td><b>'+escHtml(k)+'</b></td><td>'+g.n+'</td><td>'+concFmtPeso(g.peso)+'</td><td>'+(g.sinTarifa?'<span class="pill rechazada">Sin ruta ('+g.sinTarifa+')</span> ':'')+pre(g.fletes)+'</td><td>'+pre(g.fletesBatch)+'</td><td><b>'+fmt(g.fac)+'</b></td><td>'+fmt(g.imp)+'</td><td>'+(d>0?"+":"")+fmt(d)+'</td></tr>'; }).join("")+
+    '<tr><td class="txt"><b>TOTAL DEL CORTE</b></td><td><b>'+T.filas+'</b></td><td><b>'+concFmtPeso(T.peso)+'</b></td><td></td><td></td><td><b>'+fmt(T.fac)+'</b></td><td><b>'+fmt(T.imp)+'</b></td><td><b>'+(dif>0?"+":"")+fmt(dif)+'</b></td></tr></tbody></table></div>';
+
+  /* 6. Detalle */
   var MAX = 500;
   document.getElementById("facDetalle").innerHTML = !R.filas.length ? '<p class="hint" style="margin:0;">Sin remisiones en este corte.</p>' :
     '<div class="table-wrap"><table class="data"><thead><tr><th>Fecha</th><th>Remisión</th><th>Batch</th><th>Origen</th><th>Destino</th><th>Ruta de flete</th><th>Peso</th><th>Tu flete</th><th>A facturar</th><th>Importe Batch</th><th>Diferencia</th></tr></thead><tbody>'+
@@ -3591,9 +3676,10 @@ function facExportar(){
     {Concepto:"Remisiones sin ruta de flete", Valor:T.sinTarifa}
   ];
   var porRuta = Object.keys(R.grupos).map(function(k){ var g=R.grupos[k]; return {Ruta:g.tarifa?g.tarifa.nombre:"Sin ruta asignada", Remisiones:g.n, Peso:Math.round(g.peso*100)/100, "Flete del Batch":g.fletesBatch.join(" / "), "Tu flete":g.tarifa?facFleteAplicado(g.tarifa,q.key):"", "A facturar":Math.round(g.fac), "Importe Batch":Math.round(g.imp), Diferencia:Math.round(g.fac-g.imp)}; });
+  var porBatch = Object.keys(R.porBatch).sort(function(a,b){ return (Number(a)-Number(b)) || String(a).localeCompare(String(b)); }).map(function(k){ var g=R.porBatch[k]; return {Batch:k, Remisiones:g.n, Peso:Math.round(g.peso*100)/100, "Tu precio (flete)":g.fletes.join(" / "), "Precio del Batch":g.fletesBatch.join(" / "), "Importe a facturar":Math.round(g.fac), "Importe Batch":Math.round(g.imp), Diferencia:Math.round(g.fac-g.imp)}; });
   var det = R.filas.map(function(r){ return {Fecha:r.fecha, "Remision proveedor":r.rem, Batch:r.batch, Origen:r.origen, Destino:r.destino, "Ruta de flete":r.tarifa?r.tarifa.nombre:"Sin ruta", Peso:Math.round(r.peso*100)/100, "Tu flete":r.tarifa?r.flete:"", "A facturar":Math.round(r.fac), "Importe Batch":Math.round(r.imp), Diferencia:r.tarifa?Math.round(r.dif):""}; });
   var tar = DB.fletesCliente.map(function(t){ return {Ruta:t.nombre, "Flete base":Number(t.flete)||0, "Flete aplicado en el corte":facFleteAplicado(t,q.key)}; });
-  descargarLibro(libroDesde([hojaDesde("Resumen",resumen), hojaDesde("Por ruta",porRuta), hojaDesde("Detalle",det), hojaDesde("Fletes",tar)]), "facturacion-corte-"+(q.desde||"")+"_"+(q.hasta||"")+".xlsx");
+  descargarLibro(libroDesde([hojaDesde("Resumen",resumen), hojaDesde("Por ruta",porRuta), hojaDesde("Por batch",porBatch), hojaDesde("Detalle",det), hojaDesde("Fletes",tar)]), "facturacion-corte-"+(q.desde||"")+"_"+(q.hasta||"")+".xlsx");
 }
 
 var APLICATIVO_INICIADO = false;
