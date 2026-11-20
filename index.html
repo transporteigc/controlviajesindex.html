@@ -2920,6 +2920,8 @@ function concRutaTieneBatch(rutaCodigo){
   var r = rutaByCodigo(rutaCodigo), n = concNormTexto(r ? r.nombre : rutaCodigo);
   return CONC_RUTAS_BATCH.some(function(rx){ return rx.test(n); });
 }
+/* Las alertas y el análisis del historial de batch rigen desde esta fecha: batch y viajes anteriores no se tienen en cuenta. */
+var CONC_INICIO_ALERTAS = "2026-11-01";
 var CONC_OBS_OTRO = "No se encontró batch: esta ruta no hace parte de las rutas establecidas por el cliente Cementos Argos (corresponde a otro cliente).";
 function concFmtNum(x){ if(x===""||x==null) return ""; var n=Number(x); return isNaN(n)?String(x):String(Math.round(n)); }
 function concFechaIso(v){
@@ -3098,16 +3100,17 @@ function concEliminarLote(id){
 
 /* Cobertura por días: qué fechas están soportadas por algún archivo de batch. */
 function concCobertura(){
-  var lotes = DB.batchLotes||[];
+  var lotes = (DB.batchLotes||[]).filter(function(l){ return l.hasta>=CONC_INICIO_ALERTAS; });
   if(!lotes.length) return null;
   var cubre = {}, min = "9999-12-31", max = "0000-01-01";
   lotes.forEach(function(l){
-    if(l.desde<min) min = l.desde; if(l.hasta>max) max = l.hasta;
+    var ini = l.desde<CONC_INICIO_ALERTAS ? CONC_INICIO_ALERTAS : l.desde;
+    if(ini<min) min = ini; if(l.hasta>max) max = l.hasta;
     var n = 0;
-    for(var d=l.desde; d<=l.hasta && n<1500; d=concSumarDias(d,1), n++){ (cubre[d]=cubre[d]||[]).push(l); }
+    for(var d=ini; d<=l.hasta && n<1500; d=concSumarDias(d,1), n++){ (cubre[d]=cubre[d]||[]).push(l); }
   });
   var viajesDia = {};
-  DB.viajes.forEach(function(v){ viajesDia[v.fecha] = (viajesDia[v.fecha]||0)+1; });
+  DB.viajes.forEach(function(v){ if(v.fecha>=CONC_INICIO_ALERTAS) viajesDia[v.fecha] = (viajesDia[v.fecha]||0)+1; });
   var huecos = [], ini = null, n2 = 0;
   for(var d2=min; d2<=max && n2<3000; d2=concSumarDias(d2,1), n2++){
     if(!cubre[d2]){ if(!ini) ini = d2; }
@@ -3142,10 +3145,15 @@ function concRenderHistorial(){
     return;
   }
   var cov = concCobertura();
+  if(!cov){
+    el.innerHTML = '<div class="card"><h3>Historial de batch facturados</h3><div class="callout info">Las alertas rigen desde el <b>'+concFmtFechaCorta(CONC_INICIO_ALERTAS)+'</b>. Los batch y viajes anteriores no se tienen en cuenta. Aún no hay un batch guardado desde esa fecha.</div></div>';
+    return;
+  }
+  var lotesAn = {}; lotes.forEach(function(l){ if(l.hasta>=CONC_INICIO_ALERTAS) lotesAn[l.id] = true; });
 
   /* Remisiones repetidas entre archivos distintos */
   var porRem = {};
-  (DB.batchFilas||[]).forEach(function(x){ var k=concNormRem(x.rem); (porRem[k]=porRem[k]||[]).push(x); });
+  (DB.batchFilas||[]).filter(function(x){ return lotesAn[x.loteId]; }).forEach(function(x){ var k=concNormRem(x.rem); (porRem[k]=porRem[k]||[]).push(x); });
   var reps = [];
   Object.keys(porRem).forEach(function(k){
     var ls = {}; porRem[k].forEach(function(x){ ls[x.loteId]=true; });
@@ -3162,7 +3170,7 @@ function concRenderHistorial(){
 
   /* Tabla de lotes */
   var filas = lotes.map(function(l){
-    return '<tr><td class="txt">'+escHtml(l.archivo)+'</td><td>'+l.desde+'</td><td>'+l.hasta+'</td><td>'+concDiasEntre(l.desde,l.hasta)+'</td><td>'+l.nFilas+(l.nOmitidas?' <span class="hint">(+'+l.nOmitidas+' omitidas)</span>':'')+'</td><td>'+fmt(l.importe||0)+'</td><td>'+(l.fechaCarga||"")+'</td><td class="txt">'+escHtml(l.usuario||"")+'</td><td><button class="btn" onclick="concEliminarLote(\''+l.id+'\')">Eliminar</button></td></tr>';
+    return '<tr><td class="txt">'+escHtml(l.archivo)+(l.hasta<CONC_INICIO_ALERTAS?' <span class="hint">(anterior al '+concFmtFechaCorta(CONC_INICIO_ALERTAS)+': no se analiza)</span>':'')+'</td><td>'+l.desde+'</td><td>'+l.hasta+'</td><td>'+concDiasEntre(l.desde,l.hasta)+'</td><td>'+l.nFilas+(l.nOmitidas?' <span class="hint">(+'+l.nOmitidas+' omitidas)</span>':'')+'</td><td>'+fmt(l.importe||0)+'</td><td>'+(l.fechaCarga||"")+'</td><td class="txt">'+escHtml(l.usuario||"")+'</td><td><button class="btn" onclick="concEliminarLote(\''+l.id+'\')">Eliminar</button></td></tr>';
   }).join("");
 
   /* Huecos */
@@ -3261,7 +3269,7 @@ function concRenderHistorial(){
   }
 
   el.innerHTML = '<div class="card"><h3>Historial de batch facturados</h3>' +
-    '<div class="hint" style="margin:0 0 10px;">Calendario interactivo: cada día muestra si lo cubre un archivo de Batch y cuántos viajes quedaron pendientes por facturar.</div>' +
+    '<div class="hint" style="margin:0 0 10px;">Calendario interactivo: cada día muestra si lo cubre un archivo de Batch y cuántos viajes quedaron pendientes por facturar. Las alertas rigen desde el '+concFmtFechaCorta(CONC_INICIO_ALERTAS)+': los batch y viajes anteriores no se analizan.</div>' +
     banner + detalle + htmlReps + htmlHuecos +
     '<div class="cov-leyenda"><span><i style="background:#2E8B57;"></i>Cubierto</span><span><i style="background:var(--red-bg);border:1px solid #E9C4BE;"></i>Sin batch</span><span><i style="background:#D98E04;"></i>Cubierto por 2+ archivos</span><span><i style="background:#EEF1F3;"></i>Fuera del rango / pendiente</span><span><i style="background:#C62828;border-radius:50%;"></i>Viajes pendientes por facturar (número)</span><span><i style="outline:3px solid var(--gold);background:#fff;"></i>Periodo resaltado</span></div>' +
     '<div class="cov-meses">'+meses+'</div>' +
@@ -3439,12 +3447,12 @@ function renderConciliacion(){
 /* ===== Remisiones pendientes de batch, agrupadas por periodo de cada archivo de Batch ===== */
 function concPendientesDatos(){
   var res = concCalcular(true);
-  var grupos = (DB.batchLotes||[]).slice().sort(function(a,b){ return b.desde.localeCompare(a.desde) || b.hasta.localeCompare(a.hasta); })
+  var grupos = (DB.batchLotes||[]).filter(function(l){ return l.hasta>=CONC_INICIO_ALERTAS; }).sort(function(a,b){ return b.desde.localeCompare(a.desde) || b.hasta.localeCompare(a.hasta); })
     .map(function(l){ return {id:l.id, titulo:l.archivo, desde:l.desde, hasta:l.hasta, items:[]}; });
-  if(CONC_PEND && CONC_PEND.minF) grupos.unshift({id:"__pend", titulo:CONC_PEND.archivo+" (por guardar)", desde:CONC_PEND.minF, hasta:CONC_PEND.maxF||CONC_PEND.minF, items:[]});
+  if(CONC_PEND && CONC_PEND.minF && (CONC_PEND.maxF||CONC_PEND.minF)>=CONC_INICIO_ALERTAS) grupos.unshift({id:"__pend", titulo:CONC_PEND.archivo+" (por guardar)", desde:CONC_PEND.minF, hasta:CONC_PEND.maxF||CONC_PEND.minF, items:[]});
   var fuera = {titulo:"", desde:"", hasta:"", items:[], fuera:true};
   res.viajes.forEach(function(x){
-    if(x.estado==="otro") return; /* rutas de otro cliente no entran en el Batch */
+    if(x.estado==="otro" || x.v.fecha<CONC_INICIO_ALERTAS) return; /* otro cliente, o viaje anterior a la vigencia de las alertas */
     var g = null;
     for(var i=0;i<grupos.length;i++){ if(x.v.fecha>=grupos[i].desde && x.v.fecha<=grupos[i].hasta){ g = grupos[i]; break; } }
     var gg = g || fuera;
