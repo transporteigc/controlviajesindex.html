@@ -379,7 +379,7 @@ body.rol-aprobador .solo-aprobador{display:inline-block;}
   <div class="card" id="concControles" style="display:none;">
     <h3>2. Viajes de la plataforma y su batch</h3>
     <div class="grid3">
-      <div class="field"><label for="concFiltro">Mostrar</label><select id="concFiltro" onchange="renderConciliacion()"><option value="todos">Todos los viajes</option><option value="con">Solo con batch</option><option value="sin">Solo sin batch</option></select></div>
+      <div class="field"><label for="concFiltro">Mostrar</label><select id="concFiltro" onchange="renderConciliacion()"><option value="todos">Todos los viajes</option><option value="con">Solo con batch</option><option value="sin">Solo sin batch (incluye parciales)</option><option value="multi">Solo viajes con 2+ remisiones</option></select></div>
       <div class="field"><label for="concBuscar">Buscar (remisión, batch, placa, conductor)</label><input type="text" id="concBuscar" oninput="renderConciliacion()" autocomplete="off"></div>
       <div class="btn-row" style="align-self:end;margin:0 0 10px;"><button class="btn gold" onclick="exportarConciliacion()">Exportar a Excel</button></div>
     </div>
@@ -2855,6 +2855,22 @@ function concNormRem(x){
   if(/^\d+$/.test(s)) s = s.replace(/^0+/,"") || "0";
   return s;
 }
+/* Un viaje puede traer 2 o más remisiones separadas por guion medio (ej. 5198-5203). */
+function concPartesRem(x){
+  var vistas = {}, out = [];
+  String(x==null?"":x).split(/\s*[-\u2010\u2011\u2012\u2013\u2014]\s*/).forEach(function(p){
+    p = p.trim(); if(!p) return;
+    var k = concNormRem(p); if(vistas[k]) return; vistas[k] = true; out.push({rem:p, k:k});
+  });
+  return out;
+}
+/* Partes de un viaje: si la remisión completa (con guion) existe tal cual en el Batch se respeta como una sola. */
+function concPartesViaje(v){
+  var full = concNormRem(v.remision);
+  if(!full) return [];
+  if(CONC && CONC.porRem[full]) return [{rem:String(v.remision).trim(), k:full}];
+  return concPartesRem(v.remision);
+}
 function concFmtNum(x){ if(x===""||x==null) return ""; var n=Number(x); return isNaN(n)?String(x):String(Math.round(n)); }
 function concFechaIso(v){
   if(v instanceof Date && !isNaN(v)) return v.getFullYear()+"-"+pad2(v.getMonth()+1)+"-"+pad2(v.getDate());
@@ -3139,17 +3155,34 @@ function concFmtPeso(n){ return n.toLocaleString("es-CO",{minimumFractionDigits:
 function concCalcular(){
   var desde = (document.getElementById("concDesde")||{}).value || "", hasta = (document.getElementById("concHasta")||{}).value || "";
   var cuenta = {}, claves = {};
-  DB.viajes.forEach(function(v){ var k=concNormRem(v.remision); if(k){ cuenta[k]=(cuenta[k]||0)+1; claves[k]=true; } });
+  DB.viajes.forEach(function(v){ concPartesViaje(v).forEach(function(p){ cuenta[p.k]=(cuenta[p.k]||0)+1; claves[p.k]=true; }); });
   var viajes = DB.viajes.filter(function(v){ return (!desde || v.fecha>=desde) && (!hasta || v.fecha<=hasta); })
     .sort(function(a,b){ return (b.fecha+(b.hora||"")).localeCompare(a.fecha+(a.hora||"")); })
     .map(function(v){
-      var k = concNormRem(v.remision), m = k ? (CONC.porRem[k]||[]) : [], bs = [];
+      var partes = concPartesViaje(v), m = [], bs = [];
+      partes.forEach(function(p){ var f = CONC.porRem[p.k]||[]; p.found = f.length>0; f.forEach(function(x){ m.push(x); }); });
       m.forEach(function(x){ if(bs.indexOf(x.batch)<0) bs.push(x.batch); });
-      var estado = !k ? "sinrem" : (m.length ? "con" : "sin");
-      return {v:v, k:k, m:m, batch:bs.join(", "), estado:estado, repetida:(k && cuenta[k]>1)};
+      var nf = partes.filter(function(p){ return p.found; }).length;
+      var estado = !partes.length ? "sinrem" : (nf===partes.length ? "con" : (nf ? "parcial" : "sin"));
+      return {v:v, k:(partes.length?partes[0].k:""), m:m, batch:bs.join(", "), estado:estado,
+        repetida:partes.some(function(p){ return cuenta[p.k]>1; }),
+        multi:partes.length>1, partes:partes, faltan:partes.filter(function(p){ return !p.found; })};
     });
   var sinViaje = CONC.filas.filter(function(x){ return !claves[x.clave]; });
   return {viajes:viajes, sinViaje:sinViaje};
+}
+
+/* Aviso de viajes con 2 o más remisiones (separadas por guion medio). */
+function concAvisoMulti(multis){
+  if(!multis.length) return '<div class="callout info" style="margin-top:14px;">No hay viajes con 2 o más remisiones (separadas por guion) en el periodo mostrado.</div>';
+  var tr = multis.slice(0,60).map(function(x){
+    var c = conductorById(x.v.conductorId);
+    var rems = x.partes.map(function(p){ return escHtml(p.rem)+(p.found?' ✔':' ✖ <i>(sin batch)</i>'); }).join('<br>');
+    return '<tr><td>'+x.v.fecha+'</td><td class="txt">'+escHtml(c?c.nombre:x.v.conductorId)+'</td><td>'+escHtml(x.v.vehiculo||"")+'</td><td class="txt">'+rems+'</td><td><b>'+(x.batch?escHtml(x.batch):"—")+'</b></td></tr>';
+  }).join("");
+  return '<div class="callout warn" style="margin-top:14px;"><b>🔗 Se detectaron '+multis.length+' viaje(s) con 2 o más remisiones</b> (separadas por guion). Cada remisión se busca por separado en el Batch y el peso y el importe del viaje suman todas las encontradas. Revisa que cada una tenga su batch.</div>' +
+    '<div class="table-wrap" style="margin-top:8px;"><table class="data"><thead><tr><th>Fecha</th><th>Conductor</th><th>Vehículo</th><th>Remisiones del viaje</th><th>Batch</th></tr></thead><tbody>'+tr+'</tbody></table></div>' +
+    (multis.length>60?'<div class="hint">Se muestran los primeros 60 de '+multis.length+'; el Excel exportado trae todos.</div>':'');
 }
 
 function renderConciliacion(){
@@ -3170,13 +3203,16 @@ function renderConciliacion(){
   var con = res.viajes.filter(function(x){ return x.estado==="con"; }).length;
   var sin = res.viajes.filter(function(x){ return x.estado==="sin"; }).length;
   var sr = res.viajes.filter(function(x){ return x.estado==="sinrem"; }).length;
+  var parc = res.viajes.filter(function(x){ return x.estado==="parcial"; }).length;
+  var multis = res.viajes.filter(function(x){ return x.multi; });
   var impTotal = CONC.filas.reduce(function(a,x){ return a+x.importe; },0);
   var impSinViaje = res.sinViaje.reduce(function(a,x){ return a+x.importe; },0);
   var pct = res.viajes.length ? Math.round(con*100/res.viajes.length) : 0;
 
   var lista = res.viajes.filter(function(x){
     if(filtro==="con" && x.estado!=="con") return false;
-    if(filtro==="sin" && x.estado!=="sin" && x.estado!=="sinrem") return false;
+    if(filtro==="sin" && x.estado!=="sin" && x.estado!=="sinrem" && x.estado!=="parcial") return false;
+    if(filtro==="multi" && !x.multi) return false;
     if(buscar){
       var c = conductorById(x.v.conductorId);
       var txt = [x.v.remision, x.batch, x.v.vehiculo, c?c.nombre:""].join(" ").toLowerCase();
@@ -3189,11 +3225,13 @@ function renderConciliacion(){
     var v = x.v, c = conductorById(v.conductorId), r = rutaByCodigo(v.rutaCodigo);
     var pill = x.estado==="con" ? '<span class="pill aprobada">✔ Con batch</span>'
              : x.estado==="sin" ? '<span class="pill rechazada">✖ Sin batch</span>'
+             : x.estado==="parcial" ? '<span class="pill rechazada" title="Faltan en el Batch: '+escHtml(x.faltan.map(function(p){ return p.rem; }).join(", "))+'">◐ Parcial: falta batch en '+x.faltan.length+' de '+x.partes.length+'</span>'
              : '<span class="pill revision">Sin remisión</span>';
+    if(x.multi) pill += ' <span class="pill revision" title="Este viaje trae varias remisiones separadas por guion">🔗 '+x.partes.length+' remisiones</span>';
     if(x.repetida) pill += ' <span class="pill revision" title="Esta remisión está registrada más de una vez en la plataforma">Remisión repetida</span>';
     var flete = x.m.reduce(function(a,y){ return a+y.importe; },0);
     var pf = concPesoFlete(x.m);
-    return '<tr><td>'+v.fecha+'</td><td class="txt">'+escHtml(c?c.nombre:v.conductorId)+'</td><td>'+escHtml(v.vehiculo||"")+'</td><td class="txt">'+escHtml(r?r.nombre:v.rutaCodigo)+'</td><td>'+(v.remision?escHtml(v.remision):"—")+'</td><td><b>'+(x.batch?escHtml(x.batch):"—")+'</b></td><td>'+(x.m.length?concFmtPeso(pf.peso):"—")+'</td><td>'+(pf.flete.length?pf.flete.map(fmt).join(" / "):"—")+'</td><td>'+(x.m.length?fmt(flete):"—")+'</td><td class="txt">'+pill+'</td></tr>';
+    return '<tr><td>'+v.fecha+'</td><td class="txt">'+escHtml(c?c.nombre:v.conductorId)+'</td><td>'+escHtml(v.vehiculo||"")+'</td><td class="txt">'+escHtml(r?r.nombre:v.rutaCodigo)+'</td><td>'+(x.multi ? x.partes.map(function(p){ return escHtml(p.rem)+(p.found?' ✔':' ✖'); }).join('<br>') : (v.remision?escHtml(v.remision):"—"))+'</td><td><b>'+(x.batch?escHtml(x.batch):"—")+'</b></td><td>'+(x.m.length?concFmtPeso(pf.peso):"—")+'</td><td>'+(pf.flete.length?pf.flete.map(fmt).join(" / "):"—")+'</td><td>'+(x.m.length?fmt(flete):"—")+'</td><td class="txt">'+pill+'</td></tr>';
   }).join("");
   if(!filasHtml) filasHtml = '<tr><td colspan="10" class="txt" style="text-align:center;color:var(--slate);padding:18px;">Sin viajes con este filtro.</td></tr>';
 
@@ -3206,9 +3244,9 @@ function renderConciliacion(){
     '<div class="grid4" style="margin-bottom:18px;">' +
       '<div class="metric"><p class="m-label">Viajes en la plataforma</p><div class="m-value">'+res.viajes.length+'</div></div>' +
       '<div class="metric alt"><p class="m-label">✔ Con batch</p><div class="m-value">'+con+' ('+pct+'%)</div></div>' +
-      '<div class="metric"><p class="m-label">✖ Sin batch</p><div class="m-value">'+sin+(sr?' · '+sr+' sin remisión':'')+'</div></div>' +
+      '<div class="metric"><p class="m-label">✖ Sin batch</p><div class="m-value">'+sin+(parc?' · '+parc+' parcial(es)':'')+(sr?' · '+sr+' sin remisión':'')+'</div></div>' +
       '<div class="metric alt"><p class="m-label">Batch sin viaje en plataforma</p><div class="m-value">'+res.sinViaje.length+'</div></div>' +
-    '</div>';
+    '</div>' + concAvisoMulti(multis);
   tv.innerHTML = '<div class="table-wrap"><table class="data"><thead><tr><th>Fecha</th><th>Conductor</th><th>Vehículo</th><th>Ruta</th><th>Remisión</th><th>Batch para facturar</th><th>Peso neto</th><th>Flete</th><th>Importe batch</th><th>Check</th></tr></thead><tbody>'+filasHtml+'</tbody></table></div>' +
       (recorte?'<div class="hint">Se muestran los primeros '+MAX+' de '+lista.length+' viajes; el Excel exportado trae todos.</div>':'');
   hu.innerHTML = '<div class="card"><h3>3. Remisiones del Batch que no están registradas en la plataforma</h3>' +
@@ -3219,10 +3257,10 @@ function renderConciliacion(){
 function exportarConciliacion(){
   if(!CONC){ alert("Primero carga el Excel del Batch."); return; }
   var res = concCalcular();
-  var estados = {con:"Con batch", sin:"Sin batch", sinrem:"Sin remisión"};
+  var estados = {con:"Con batch", sin:"Sin batch", parcial:"Parcial (falta batch en alguna remisión)", sinrem:"Sin remisión"};
   var filas = res.viajes.map(function(x){
     var v=x.v, c=conductorById(v.conductorId), r=rutaByCodigo(v.rutaCodigo);
-    return {Fecha:v.fecha, Conductor:c?c.nombre:v.conductorId, Vehiculo:v.vehiculo||"", Ruta:r?r.nombre:v.rutaCodigo, "Remision proveedor":v.remision||"", "Batch para facturar":x.batch, "Peso neto":concPesoFlete(x.m).peso, Flete:concPesoFlete(x.m).flete.join(" / "), "Importe batch":x.m.reduce(function(a,y){return a+y.importe;},0), Check:estados[x.estado]+(x.repetida?" (remisión repetida)":"")};
+    return {Fecha:v.fecha, Conductor:c?c.nombre:v.conductorId, Vehiculo:v.vehiculo||"", Ruta:r?r.nombre:v.rutaCodigo, "Remision proveedor":v.remision||"", "Batch para facturar":x.batch, "Peso neto":concPesoFlete(x.m).peso, Flete:concPesoFlete(x.m).flete.join(" / "), "Importe batch":x.m.reduce(function(a,y){return a+y.importe;},0), Check:estados[x.estado]+(x.repetida?" (remisión repetida)":""), "N.º de remisiones":x.partes.length, "Remisiones sin batch":x.faltan.map(function(p){return p.rem;}).join(" - ")};
   });
   var huerf = res.sinViaje.map(function(x){ return {Batch:x.batch, "Remision proveedor":x.rem, "Fecha Batch":x.fecha, Origen:x.origen, Destino:x.destino, "Peso neto":x.peso, Flete:x.flete, Importe:x.importe}; });
   var resumen = [
@@ -3231,10 +3269,16 @@ function exportarConciliacion(){
     {Concepto:"Con batch", Valor:res.viajes.filter(function(x){return x.estado==="con";}).length},
     {Concepto:"Sin batch", Valor:res.viajes.filter(function(x){return x.estado==="sin";}).length},
     {Concepto:"Sin remisión", Valor:res.viajes.filter(function(x){return x.estado==="sinrem";}).length},
+    {Concepto:"Parcial (falta batch en alguna remisión)", Valor:res.viajes.filter(function(x){return x.estado==="parcial";}).length},
+    {Concepto:"Viajes con 2 o más remisiones", Valor:res.viajes.filter(function(x){return x.multi;}).length},
     {Concepto:"Remisiones del Batch sin viaje en la plataforma", Valor:res.sinViaje.length}
   ];
   var hist = (DB.batchLotes||[]).slice().sort(function(a,b){ return a.desde.localeCompare(b.desde); }).map(function(l){ return {Archivo:l.archivo, "Periodo desde":l.desde, "Periodo hasta":l.hasta, "Fecha de carga":l.fechaCarga, Usuario:l.usuario||"", Remisiones:l.nFilas, "Importe":l.importe||0}; });
-  descargarLibro(libroDesde([hojaDesde("Resumen",resumen), hojaDesde("Viajes vs Batch",filas), hojaDesde("Batch sin viaje",huerf), hojaDesde("Historial batch",hist)]), "conciliacion-batch-"+nowDateStr()+".xlsx");
+  var multiFilas = [];
+  res.viajes.forEach(function(x){ if(!x.multi) return; var c=conductorById(x.v.conductorId); x.partes.forEach(function(p){ var f=CONC.porRem[p.k]||[]; multiFilas.push({Fecha:x.v.fecha, Conductor:c?c.nombre:x.v.conductorId, Vehiculo:x.v.vehiculo||"", "Remision del viaje (completa)":x.v.remision||"", "Remision individual":p.rem, "Batch para facturar":f.map(function(y){return y.batch;}).join(", "), "Peso neto":concPesoFlete(f).peso, "Importe batch":f.reduce(function(a,y){return a+y.importe;},0), Check:p.found?"Con batch":"Sin batch"}); }); });
+  var hojas = [hojaDesde("Resumen",resumen), hojaDesde("Viajes vs Batch",filas), hojaDesde("Batch sin viaje",huerf), hojaDesde("Historial batch",hist)];
+  if(multiFilas.length) hojas.splice(2,0,hojaDesde("Viajes 2+ remisiones",multiFilas));
+  descargarLibro(libroDesde(hojas), "conciliacion-batch-"+nowDateStr()+".xlsx");
 }
 
 /* ===== Facturación por corte al cliente (cada corte = ventana de fechas de un Batch) =====
